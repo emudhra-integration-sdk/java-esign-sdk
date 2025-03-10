@@ -99,4 +99,7 @@
         <delete dir="${dist.jar}"/>
         <delete dir="${build.dir}/obfuscated"/>
     </target>
+	<target name="-javadoc-build">
+		<echo message="Skipping Javadoc generation."/>
+    </target>
 </project>
