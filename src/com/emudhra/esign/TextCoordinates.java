@@ -4,18 +4,123 @@ import esign.text.Rectangle;
 import esign.text.pdf.PdfReader;
 import esign.text.pdf.parser.LocationTextExtractionStrategy;
 import esign.text.pdf.parser.PdfTextExtractor;
-import esign.text.pdf.parser.TextExtractionStrategy;
 import esign.text.pdf.parser.TextRenderInfo;
 import esign.text.pdf.parser.Vector;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.StringJoiner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 //import org.emcastle.util.encoders.Base64;
 
-public class TextCoordinates {
+public class TextCoordinates extends LocationTextExtractionStrategy {
+
+    // Added by Bavaji
+    public List<Coord> Coords = new ArrayList<>();
+    private String searchPattern;
+
+    public String getSearchPattern() {
+        return searchPattern;
+    }
+
+    public void setSearchPattern(String searchPattern) {
+        this.searchPattern = searchPattern;
+    }
+
+    private StringBuilder chunkText = new StringBuilder();
+
+    public StringBuilder getChunkText() {
+        return chunkText;
+    }
+
+    public void setChunkText(StringBuilder chunkText) {
+        this.chunkText = chunkText;
+    }
+
+    private List<TextRenderInfo> Text = new ArrayList<>();
+
+    public List<TextRenderInfo> getText() {
+        return Text;
+    }
+
+    public void setText(List<TextRenderInfo> text) {
+        this.Text = text;
+    }
+
+    public TextCoordinates() {
+        reset();
+    }
+
+    private void reset() {
+        beginTextBlock();
+    }
+
+    @Override
+    public void beginTextBlock() {
+        chunkText = new StringBuilder();
+        Text = new ArrayList<>();
+    }
+
+    @Override
+    public void endTextBlock() {
+        String line = chunkText.toString();
+        Pattern pattern = Pattern.compile(searchPattern);
+        Matcher matcher = pattern.matcher(line);
+        while (matcher.find()) {
+            int startIdx = matcher.start();
+            int endIdx = matcher.end() - 1;
+
+            if (startIdx < Text.size() && endIdx < Text.size()) {
+                TextRenderInfo startInfo = Text.get(startIdx);
+                TextRenderInfo endInfo = Text.get(endIdx);
+
+                Vector letterStart = startInfo.getBaseline().getStartPoint();
+                Vector letterEnd = endInfo.getAscentLine().getEndPoint();
+
+                Coords.add(new Coord(
+                        letterStart.get(Vector.I1), letterStart.get(Vector.I2),
+                        letterEnd.get(Vector.I1), letterEnd.get(Vector.I2)
+                ));
+            }
+        }
+    }
+
+    @Override
+    public void renderText(TextRenderInfo renderInfo) {
+        Text.addAll(renderInfo.getCharacterRenderInfos());
+        chunkText.append(renderInfo.getText());
+    }
+
+    public String getCoordinates(PdfReader pdfReader, String textToSearch, String offset, int height, int width, ContentSearch.Position position) throws IOException {
+        StringBuilder coordinates = new StringBuilder();
+        String[] offsets = offset.split("\\|");
+        int offX = Integer.parseInt(offsets[0]);
+        int offY = Integer.parseInt(offsets[1]);
+
+        TextCoordinates pr = new TextCoordinates();
+        pr.setSearchPattern(textToSearch);
+
+        int numberOfPages = pdfReader.getNumberOfPages();
+
+        for (int i = 1; i <= numberOfPages; i++) {
+            pr.Coords.clear(); // Clear previous coordinates
+
+            // Extract text from the current page
+            PdfTextExtractor.getTextFromPage(pdfReader, i, pr);
+            Rectangle pagedetails = pdfReader.getPageSize(i);
+            float Pageheight = pagedetails.getHeight();
+            if (!pr.Coords.isEmpty()) {
+                long lastIndex = 1;
+                for (Coord c : pr.Coords) {
+                    String coordString = i + "-" + getCordFromPosition(c, position, offX, offY, height, width) + ";";
+                    coordinates.append(coordString);
+                    lastIndex++;
+                }
+            }
+        }
+        return coordinates.toString();
+    }
+
 //    public static void main(String[] args) {
 //        String textToSearch = "User";
 //        String position = "IBL"; 
@@ -28,13 +133,13 @@ public class TextCoordinates {
 //            Logger.getLogger(TextCoordinates.class.getName()).log(Level.SEVERE, null, ex);
 //        }
 //    }
-
     /**
      * @param pdfReader pdfreader objrct for text search
      * @return cordinates for searched text
      * @
      *
      */
+    /*
     public static String getCoordinates(PdfReader pdfReader, String textToSearch, String offset, int height, int width, ContentSearch.Position position) throws IOException {
         StringJoiner coords = new StringJoiner(";");
         int offX = Integer.parseInt(offset.split("\\|")[0]);
@@ -82,8 +187,7 @@ public class TextCoordinates {
         }
 
         return coords.toString();
-    }
-
+    }*/
     private static String getCordFromPosition(Coord c, ContentSearch.Position position, int offX, int offY, int height, int width) {
 
         switch (position) {
@@ -153,19 +257,19 @@ class Coord {
     }
 }
 
-class Program extends LocationTextExtractionStrategy {
-
-    protected StringBuffer chunkText = new StringBuffer();
-    protected List<TextRenderInfo> text = new ArrayList<>();
-
-    public void beginTextBlock() {
-    }
-
-    public void endTextBlock() {
-    }
-
-    public void renderText(TextRenderInfo renderInfo) {
-        this.text.addAll(renderInfo.getCharacterRenderInfos());
-        this.chunkText.append(renderInfo.getText());
-    }
-}
+//class Program extends LocationTextExtractionStrategy {
+//
+//    protected StringBuffer chunkText = new StringBuffer();
+//    protected List<TextRenderInfo> text = new ArrayList<>();
+//
+//    public void beginTextBlock() {
+//    }
+//
+//    public void endTextBlock() {
+//    }
+//
+//    public void renderText(TextRenderInfo renderInfo) {
+//        this.text.addAll(renderInfo.getCharacterRenderInfos());
+//        this.chunkText.append(renderInfo.getText());
+//    }
+//}

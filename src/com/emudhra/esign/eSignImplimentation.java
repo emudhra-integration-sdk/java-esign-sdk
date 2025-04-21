@@ -259,7 +259,8 @@ public final class eSignImplimentation {
                                         serviceReturnObj.setErrorMessage("Invalid Postion");
                                         return serviceReturnObj;
                                     }
-                                    cordinate = TextCoordinates.getCoordinates(reader, input.getContentSearch().getSearchText(), input.getContentSearch().getOffset(), input.getContentSearch().getHeight(), input.getContentSearch().getWidth(), input.getContentSearch().getPosition());
+                                    TextCoordinates objtxt = new TextCoordinates();
+                                    cordinate = objtxt.getCoordinates(reader, input.getContentSearch().getSearchText(), input.getContentSearch().getOffset(), input.getContentSearch().getHeight(), input.getContentSearch().getWidth(), input.getContentSearch().getPosition());
                                     input.pageLevelCoordinates(cordinate);
                                     if (eSignUtility.isNullOrEmpty(cordinate)) {
                                         serviceReturnObj.setErrorCode("ESS-120");
@@ -865,13 +866,14 @@ public final class eSignImplimentation {
             } else {
                 requestXML = eSignUtility.generateRequestXML(returnDocuments, signerID, eSignSettings.getASPID(), responseUrl, redirectUrl, transactionID, timeStamp, maxWaitPeriod, isLTVRequired);
             }
-            String signedRequestXML = eSignUtility.signXML(requestXML, pfxpath, password, pfxAlias);
+            String signedRequestXML = eSignUtility.signXMLAndroid(requestXML, pfxpath, password, pfxAlias);
             String URLEncodedsignedRequestXML = URLEncoder.encode(signedRequestXML, "UTF-8");
             serviceReturnObj.setRequestXML(signedRequestXML);
             String responseXML = "";
             try {
                 String url = (esignType == eSign.eSignAPIVersion.V2) ? eSignSettings.getESIGNURLV2() : eSignSettings.getESIGNURL();
-                responseXML = HttpsConnection.excutePostHttpsXml(url, URLEncodedsignedRequestXML, proxyIp, proxyPort, proxyreq, transactionID);
+//                responseXML = HttpsConnection.excutePostHttpsXml(url, URLEncodedsignedRequestXML, proxyIp, proxyPort, proxyreq, transactionID);
+                responseXML = HttpsConnection_weblogic.excutePostHttpsXml(url, URLEncodedsignedRequestXML, proxyIp, proxyPort, proxyreq, transactionID);
             } catch (Exception e) {
                 serviceReturnObj.setPreSignedTempFile(tempFilePath);
                 serviceReturnObj.setRequestXML(signedRequestXML);
@@ -879,7 +881,7 @@ public final class eSignImplimentation {
                 serviceReturnObj.setTransactionID(transactionID);
                 serviceReturnObj.setErrorCode("ESS-103");
                 serviceReturnObj.setStatus(0);
-                serviceReturnObj.setErrorMessage("Unable to call eSign Url");
+                serviceReturnObj.setErrorMessage("Unable to call eSign Url"+ e.getMessage());
                 return serviceReturnObj;
             }
             if (responseXML.isEmpty()) {

@@ -6,7 +6,16 @@
         <group name="Remote Signing">
             <file>file:/D:/source/libprojects/eSignASPLibrary5.10/src/com/emudhra/esign/eSignImplimentation.java</file>
         </group>
-        <group/>
-        <group name="IntegrationKits_SourceCode"/>
+        <group>
+            <file>file:/D:/Source_code/Integration%20Kits/java/SDK/eSign/eSignASPLibrary5.10/src/com/emudhra/esign/eSignUtility.java</file>
+            <file>file:/D:/Source_code/Integration%20Kits/java/SDK/eSign/eSignASPLibrary5.10/src/com/emudhra/esign/eSignImplimentation.java</file>
+            <file>file:/D:/Source_code/Integration%20Kits/java/SDK/eSign/eSignASPLibrary5.10/src/com/emudhra/esign/TextCoordinates.java</file>
+        </group>
+        <group name="IntegrationKits_SourceCode">
+            <file>file:/D:/Source_code/Integration%20Kits/java/SDK/eSign/eSignASPLibrary5.10/src/com/emudhra/esign/eSignImplimentation.java</file>
+            <file>file:/D:/Source_code/Integration%20Kits/java/SDK/eSign/eSignASPLibrary5.10/src/com/emudhra/esign/HttpsConnection_weblogic.java</file>
+            <file>file:/D:/Source_code/Integration%20Kits/java/SDK/eSign/eSignASPLibrary5.10/src/com/emudhra/esign/eSignServiceReturn.java</file>
+            <file>file:/D:/Source_code/Integration%20Kits/java/SDK/eSign/eSignASPLibrary5.10/src/com/emudhra/esign/HttpsConnection.java</file>
+        </group>
     </open-files>
 </project-private>

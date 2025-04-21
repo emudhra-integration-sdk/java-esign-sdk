@@ -200,6 +200,18 @@ public final class eSignUtility {
         }
     }
 
+    protected static String signXMLAndroid(String xml, String filepath, String password, String pfxAlias) throws Exception {
+        try {
+
+            DigitalSignerNew ds = new DigitalSignerNew(filepath, password.toCharArray(), pfxAlias);
+            String XmlSigned = ds.signXML(xml, true);
+            return XmlSigned;
+
+        } catch (Exception ex) {
+            throw ex;
+        }
+    }
+
     protected static boolean tryParseInt(String value) {
         try {
             Integer.parseInt(value);
