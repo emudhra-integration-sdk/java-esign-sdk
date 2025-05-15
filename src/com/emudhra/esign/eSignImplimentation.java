@@ -25,13 +25,13 @@ import esign.text.pdf.PdfSignatureAppearance;
 import esign.text.pdf.PdfStamper;
 import esign.text.pdf.PdfString;
 import esign.text.pdf.PdfTemplate;
-import esign.text.pdf.PdfWriter;
 import esign.text.pdf.SignatureAppearanceCreator;
 import java.awt.RenderingHints;
 import java.awt.geom.AffineTransform;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
@@ -99,26 +99,7 @@ public final class eSignImplimentation {
     protected eSignServiceReturn getEncryptedPath(String path) {
         eSignServiceReturn serviceReturnObj = new eSignServiceReturn();
         try {
-            if (!eSignSettings.IsValidLicence()) {
-                serviceReturnObj.setErrorCode("ESS-101");
-                serviceReturnObj.setStatus(0);
-                serviceReturnObj.setErrorMessage("Invalid Licence - " + eSignSettings.getValidationError());
-                return serviceReturnObj;
-            }
-            if (!ValidateKitLicence.IsValidLicence()) {
-                serviceReturnObj.setErrorCode("ESS-101");
-                serviceReturnObj.setStatus(0);
-                serviceReturnObj.setErrorMessage("Invalid PDF viewer kit Licence - " + ValidateKitLicence.getValidationError());
-                return serviceReturnObj;
-            }
-            if (!eSignSettings.getASPID().equals(ValidateKitLicence.getASPID())) {
-                serviceReturnObj.setErrorCode("ESS-101");
-                serviceReturnObj.setStatus(0);
-                serviceReturnObj.setErrorMessage("Invalid Licence - ASPID missmatch");
-                return serviceReturnObj;
-            }
-
-            serviceReturnObj.setEnCryptedPath(EncryptionHelper.getEncryptedData(path, ValidateKitLicence.getEncryptionKey()));
+            serviceReturnObj.setEnCryptedPath(EncryptionHelper.getEncryptedData(path, eSignSettings.getEncryptionKey()));
             serviceReturnObj.setStatus(1);
             return serviceReturnObj;
         } catch (UnsupportedEncodingException | NoSuchAlgorithmException | NoSuchPaddingException ex) {
@@ -165,13 +146,6 @@ public final class eSignImplimentation {
             }
             maxWaitPeriod = Integer.toString(maxWaitPeriodinMin);
 
-            if (!eSignSettings.IsValidLicence()) {
-                serviceReturnObj.setTransactionID(transactionID);
-                serviceReturnObj.setErrorCode("ESS-101");
-                serviceReturnObj.setStatus(0);
-                serviceReturnObj.setErrorMessage("Invalid Licence - " + eSignSettings.getValidationError());
-                return serviceReturnObj;
-            }
             if (eSignUtility.isNullOrWhitespace(signerID)) {
                 signerID = "";
             }
@@ -503,17 +477,7 @@ public final class eSignImplimentation {
                                             appearance.setRenderingMode(PdfSignatureAppearance.RenderingMode.GRAPHIC);
                                             appearance.setSignatureGraphic((Image) imgTemplate1);
                                             break;
-//                                        case BackgroundImage:
-//                                            Image image = Image.getInstance(Base64.decode(input.getSignatureImage()));
-//                                            appearance.setImage(image);
-//                                            appearance.setSignerName(input.getSignedBy());
-//                                            appearance.setReason(input.getReason());
-//                                            appearance.setLocation(input.getLocation());
-//                                            appearance.setRenderingMode(PdfSignatureAppearance.RenderingMode.DESCRIPTION);
-//                                            break;
                                         case BackgroundImage:
-//                                            appearance.setAcro6Layers(false);
-//                                            appearance.setCertificationLevel(PdfSignatureAppearance.NOT_CERTIFIED);
                                             Font fontbg = new Font(BaseFont.createFont(BaseFont.TIMES_ITALIC, BaseFont.CP1252, BaseFont.NOT_EMBEDDED), input.getSignatureFontSize());
                                             Image image = Image.getInstance(Base64.decode(input.getSignatureImage()));
                                             appearance.setImage(image);
@@ -549,15 +513,6 @@ public final class eSignImplimentation {
                                             }
                                             appearance.setLayer2Text(sb1.toString());
 
-//                                            appearance.setSignerName(input.getSignedBy());
-//                                            String Location = input.getLocation();
-//                                            if (Location != null && !Location.isEmpty()) {
-//                                                appearance.setLocation(Location);
-//                                            }
-//                                            String reason = input.getReason();
-//                                            if (reason != null && !reason.isEmpty()) {
-//                                                appearance.setReason(reason);
-//                                            }
                                             appearance.setRenderingMode(PdfSignatureAppearance.RenderingMode.DESCRIPTION);
                                             appearance.setLayer2Font(fontbg);
                                             break;
@@ -872,7 +827,6 @@ public final class eSignImplimentation {
             String responseXML = "";
             try {
                 String url = (esignType == eSign.eSignAPIVersion.V2) ? eSignSettings.getESIGNURLV2() : eSignSettings.getESIGNURL();
-//                responseXML = HttpsConnection.excutePostHttpsXml(url, URLEncodedsignedRequestXML, proxyIp, proxyPort, proxyreq, transactionID);
                 responseXML = HttpsConnection_weblogic.excutePostHttpsXml(url, URLEncodedsignedRequestXML, proxyIp, proxyPort, proxyreq, transactionID);
             } catch (Exception e) {
                 serviceReturnObj.setPreSignedTempFile(tempFilePath);
@@ -881,7 +835,7 @@ public final class eSignImplimentation {
                 serviceReturnObj.setTransactionID(transactionID);
                 serviceReturnObj.setErrorCode("ESS-103");
                 serviceReturnObj.setStatus(0);
-                serviceReturnObj.setErrorMessage("Unable to call eSign Url"+ e.getMessage());
+                serviceReturnObj.setErrorMessage("Unable to call eSign Url" + e.getMessage());
                 return serviceReturnObj;
             }
             if (responseXML.isEmpty()) {
@@ -1099,7 +1053,6 @@ public final class eSignImplimentation {
             ByteArrayOutputStream originalout = new ByteArrayOutputStream();
             String[] Doc = preSignedDoc.split("\\|");
             byte[] sigbytes = org.emcastle.util.encoders.Base64.decode(pkcs7);
-//            byte[] paddedSig = new byte[16384];
             byte[] paddedSig;
             if (SignatureContents != 0) {
                 paddedSig = new byte[SignatureContents];
@@ -1116,7 +1069,6 @@ public final class eSignImplimentation {
             int position = Integer.parseInt(Doc[0]);
             //Calculate exclusionLocations
             HashMap<PdfName, Integer> exclusionSizes = new HashMap<PdfName, Integer>();
-//            exclusionSizes.put(PdfName.CONTENTS, 16384 * 2 + 2);
             if (SignatureContents != 0) {
                 exclusionSizes.put(PdfName.CONTENTS, SignatureContents * 2 + 2);
             } else {
@@ -1154,7 +1106,7 @@ public final class eSignImplimentation {
             originalout.write(bout, 0, boutLen);
 
             return originalout.toByteArray();
-        } catch (Exception e) {
+        } catch (IOException | IllegalArgumentException e) {
             throw e;
         }
     }
@@ -1162,13 +1114,6 @@ public final class eSignImplimentation {
     protected eSignServiceReturn getStatus(String transactionId) {
         eSignServiceReturn serviceReturnObj = new eSignServiceReturn();
         try {
-            if (!eSignSettings.IsValidLicence()) {
-                serviceReturnObj.setTransactionID(transactionId);
-                serviceReturnObj.setErrorCode("ESS-101");
-                serviceReturnObj.setStatus(0);
-                serviceReturnObj.setErrorMessage("Invalid Licence - " + eSignSettings.getValidationError());
-                return serviceReturnObj;
-            }
             if (eSignUtility.isNullOrWhitespace(transactionId)) {
                 serviceReturnObj.setErrorCode("ESS-105");
                 serviceReturnObj.setStatus(0);
@@ -1383,19 +1328,9 @@ public final class eSignImplimentation {
         return resp;
     }
 
-    protected eSignServiceReturn performBankKYC(String transactionID, String IFSCCode, String bankName, String accountNumber, UserInfo userInfo) {
+    protected eSignServiceReturn performBankKYC(String transactionID, String IFSCCode, String bankName, String accountNumber, UserInfo userInfo, String BankKYCURL) {
         eSignServiceReturn serviceReturnObj = new eSignServiceReturn();
         try {
-            if (!eSignSettings.IsValidLicence()) {
-                serviceReturnObj.setErrorCode("ESS-101");
-                serviceReturnObj.setErrorMessage("Invalid Licence - " + eSignSettings.getValidationError());
-                return serviceReturnObj;
-            }
-            if (!eSignSettings.isIsBankLicense()) {
-                serviceReturnObj.setErrorCode("ESS-101");
-                serviceReturnObj.setErrorMessage("Invalid Licence - " + eSignSettings.getValidationError());
-                return serviceReturnObj;
-            }
             if (eSignUtility.isNullOrWhitespace(transactionID)) {
                 transactionID = UUID.randomUUID().toString().replace("-", "");
             }
@@ -1411,7 +1346,7 @@ public final class eSignImplimentation {
             serviceReturnObj.setRequestXML(signedRequestXML);
             String responseXML = "";
             try {
-                responseXML = HttpsConnection.excutePostHttpsXml(eSignSettings.getBankKYCURL(), URLEncodedsignedRequestXML, proxyIp, proxyPort, proxyreq, transactionID);
+                responseXML = HttpsConnection.excutePostHttpsXml(BankKYCURL, URLEncodedsignedRequestXML, proxyIp, proxyPort, proxyreq, transactionID);
             } catch (Exception e) {
                 serviceReturnObj.setErrorCode("ESS-103");
                 serviceReturnObj.setErrorMessage("Unable to call eSign Url");
@@ -1451,4 +1386,5 @@ public final class eSignImplimentation {
             return serviceReturnObj;
         }
     }
+
 }

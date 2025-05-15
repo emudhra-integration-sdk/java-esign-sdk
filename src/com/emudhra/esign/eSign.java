@@ -5,11 +5,14 @@
  */
 package com.emudhra.esign;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.Security;
 import java.util.ArrayList;
 import java.util.logging.Logger;
-//import org.apache.logging.log4j.core.Logger;
 import org.emcastle.jce.provider.emCastleProvider;
+import org.emcastle.util.encoders.Hex;
 
 /**
  *
@@ -86,45 +89,45 @@ public class eSign {
         HASH
     }
 
-    public eSign(String licenceFilePath, String pfxpath, String password, String pfxAlias) {
-        this(licenceFilePath, pfxpath, password, pfxAlias, false, "", 0, 0, eSignSettings.LogType.AllLog, null, null, null, 0);
+    public eSign(String ASPID, String eSignURL, String eSignURLV2, String pfxpath, String password, String pfxAlias) throws NoSuchAlgorithmException {
+        this(ASPID, eSignURL, eSignURLV2, pfxpath, password, pfxAlias, false, "", 0, 0, eSignSettings.LogType.AllLog, null, null, null, 0);
     }
 
-    public eSign(String licenceFilePath, String pfxpath, String password, String pfxAlias, int SignatureContents) {
-        this(licenceFilePath, pfxpath, password, pfxAlias, false, "", 0, 0, eSignSettings.LogType.AllLog, null, null, null, SignatureContents);
+    public eSign(String ASPID, String eSignURL, String eSignURLV2, String pfxpath, String password, String pfxAlias, int SignatureContents) throws NoSuchAlgorithmException {
+        this(ASPID, eSignURL, eSignURLV2, pfxpath, password, pfxAlias, false, "", 0, 0, eSignSettings.LogType.AllLog, null, null, null, SignatureContents);
     }
 
-    public eSign(String licenceFilePath, String pfxpath, String password, String pfxAlias, boolean proxyreq, String proxyIp, int proxyPort, int SignatureContents) {
-        this(licenceFilePath, pfxpath, password, pfxAlias, proxyreq, proxyIp, proxyPort, 0, eSignSettings.LogType.AllLog, null, null, null, SignatureContents);
+    public eSign(String ASPID, String eSignURL, String eSignURLV2, String pfxpath, String password, String pfxAlias, boolean proxyreq, String proxyIp, int proxyPort, int SignatureContents) throws NoSuchAlgorithmException {
+        this(ASPID, eSignURL, eSignURLV2, pfxpath, password, pfxAlias, proxyreq, proxyIp, proxyPort, 0, eSignSettings.LogType.AllLog, null, null, null, SignatureContents);
     }
 
-    public eSign(String licenceFilePath, String pfxpath, String password, String pfxAlias, boolean proxyreq, String proxyIp, int proxyPort, int sessionTimeout, int SignatureContents) {
-        this(licenceFilePath, pfxpath, password, pfxAlias, proxyreq, proxyIp, proxyPort, sessionTimeout, eSignSettings.LogType.AllLog, null, null, null, SignatureContents);
+    public eSign(String ASPID, String eSignURL, String eSignURLV2, String pfxpath, String password, String pfxAlias, boolean proxyreq, String proxyIp, int proxyPort, int sessionTimeout, int SignatureContents) throws NoSuchAlgorithmException {
+        this(ASPID, eSignURL, eSignURLV2, pfxpath, password, pfxAlias, proxyreq, proxyIp, proxyPort, sessionTimeout, eSignSettings.LogType.AllLog, null, null, null, SignatureContents);
     }
 
-    public eSign(String licenceFilePath, String pfxpath, String password, String pfxAlias, boolean proxyreq,
-            String proxyIp, int proxyPort, int sessionTimeout, eSignSettings.LogType logType, int SignatureContents) {
-        this(licenceFilePath, pfxpath, password, pfxAlias, proxyreq, proxyIp, proxyPort, sessionTimeout, logType, null, null, null, SignatureContents);
+    public eSign(String ASPID, String eSignURL, String eSignURLV2, String pfxpath, String password, String pfxAlias, boolean proxyreq,
+            String proxyIp, int proxyPort, int sessionTimeout, eSignSettings.LogType logType, int SignatureContents) throws NoSuchAlgorithmException {
+        this(ASPID, eSignURL, eSignURLV2, pfxpath, password, pfxAlias, proxyreq, proxyIp, proxyPort, sessionTimeout, logType, null, null, null, SignatureContents);
     }
 
-    public eSign(String licenceFilePath, String pfxpath, String password, String pfxAlias, String pdfViewerLicence, int SignatureContents) {
-        this(licenceFilePath, pfxpath, password, pfxAlias, false, "", 0, 0, eSignSettings.LogType.AllLog, null, null, pdfViewerLicence, SignatureContents);
+    public eSign(String ASPID, String eSignURL, String eSignURLV2, String pfxpath, String password, String pfxAlias, String pdfViewerLicence, int SignatureContents) throws NoSuchAlgorithmException {
+        this(ASPID, eSignURL, eSignURLV2, pfxpath, password, pfxAlias, false, "", 0, 0, eSignSettings.LogType.AllLog, null, null, pdfViewerLicence, SignatureContents);
     }
 
-    public eSign(String licenceFilePath, String pfxpath, String password, String pfxAlias, boolean proxyreq, String proxyIp, int proxyPort, String pdfViewerLicence, int SignatureContents) {
-        this(licenceFilePath, pfxpath, password, pfxAlias, proxyreq, proxyIp, proxyPort, 0, eSignSettings.LogType.AllLog, null, null, pdfViewerLicence, SignatureContents);
+    public eSign(String ASPID, String eSignURL, String eSignURLV2, String pfxpath, String password, String pfxAlias, boolean proxyreq, String proxyIp, int proxyPort, String pdfViewerLicence, int SignatureContents) throws NoSuchAlgorithmException {
+        this(ASPID, eSignURL, eSignURLV2, pfxpath, password, pfxAlias, proxyreq, proxyIp, proxyPort, 0, eSignSettings.LogType.AllLog, null, null, pdfViewerLicence, SignatureContents);
     }
 
-    public eSign(String licenceFilePath, String pfxpath, String password, String pfxAlias, boolean proxyreq, String proxyIp, int proxyPort, int sessionTimeout, String pdfViewerLicence, int SignatureContents) {
-        this(licenceFilePath, pfxpath, password, pfxAlias, proxyreq, proxyIp, proxyPort, sessionTimeout, eSignSettings.LogType.AllLog, null, null, pdfViewerLicence, SignatureContents);
+    public eSign(String ASPID, String eSignURL, String eSignURLV2, String pfxpath, String password, String pfxAlias, boolean proxyreq, String proxyIp, int proxyPort, int sessionTimeout, String pdfViewerLicence, int SignatureContents) throws NoSuchAlgorithmException {
+        this(ASPID, eSignURL, eSignURLV2, pfxpath, password, pfxAlias, proxyreq, proxyIp, proxyPort, sessionTimeout, eSignSettings.LogType.AllLog, null, null, pdfViewerLicence, SignatureContents);
     }
 
-    public eSign(String licenceFilePath, String pfxpath, String password, String pfxAlias, boolean proxyreq, String proxyIp, int proxyPort, int sessionTimeout, eSignSettings.LogType logType, String pdfViewerLicence, int SignatureContents) {
-        this(licenceFilePath, pfxpath, password, pfxAlias, proxyreq, proxyIp, proxyPort, sessionTimeout, logType, null, null, pdfViewerLicence, SignatureContents);
+    public eSign(String ASPID, String eSignURL, String eSignURLV2, String pfxpath, String password, String pfxAlias, boolean proxyreq, String proxyIp, int proxyPort, int sessionTimeout, eSignSettings.LogType logType, String pdfViewerLicence, int SignatureContents) throws NoSuchAlgorithmException {
+        this(ASPID, eSignURL, eSignURLV2, pfxpath, password, pfxAlias, proxyreq, proxyIp, proxyPort, sessionTimeout, logType, null, null, pdfViewerLicence, SignatureContents);
     }
 
-    public eSign(String licenceFilePath, String pfxpath, String password, String pfxAlias, boolean proxyreq,
-            String proxyIp, int proxyPort, int sessionTimeout, eSignSettings.LogType logType, String ProxyUserID, String ProxyUserPassword, String pdfViewerLicence, int SignatureContents) {
+    public eSign(String ASPID, String eSignURL, String eSignURLV2, String pfxpath, String password, String pfxAlias, boolean proxyreq,
+            String proxyIp, int proxyPort, int sessionTimeout, eSignSettings.LogType logType, String ProxyUserID, String ProxyUserPassword, String pdfViewerLicence, int SignatureContents) throws NoSuchAlgorithmException {
         this.logger = EsignLoggerFactory.getLogger(eSign.class, null, logType);
         Security.addProvider(new emCastleProvider());
         this.pfxpath = pfxpath;
@@ -137,9 +140,12 @@ public class eSign {
         eSignSettings.setSessionTimeout(sessionTimeout);
         eSignSettings.setProxyUserID(ProxyUserID);
         eSignSettings.setProxyUserPassword(ProxyUserPassword);
-        eSignSettings.ValidateAndRead(licenceFilePath);
+        eSignSettings.setASPID(ASPID);
+        eSignSettings.setESIGNURL(eSignURL);
+        eSignSettings.setESIGNURLV2(eSignURLV2);
+
         if (pdfViewerLicence != null) {
-            ValidateKitLicence.validateKitLicence(pdfViewerLicence);
+            eSignSettings.setEncryptionKey(getSha256("PDF_VIEWER_KIT_101" + ASPID));
         }
     }
 
@@ -159,9 +165,9 @@ public class eSign {
         return impl.getGatewayParameter(inputs, signerID, transactionID, responseUrl, redirectUrl, tempFolder, eSignType, authMode, 1440, true, SignatureContents);
     }
 
-    public eSignServiceReturn performBankKYC(String transactionID, String IFSCCode, String bankName, String accountNumber, UserInfo userInfo) {
+    public eSignServiceReturn performBankKYC(String transactionID, String IFSCCode, String bankName, String accountNumber, UserInfo userInfo, String BankKYCURL) {
         eSignImplimentation impl = new eSignImplimentation(pfxpath, password, pfxAlias, proxyIp, proxyPort, proxyreq);
-        return impl.performBankKYC(transactionID, IFSCCode, bankName, accountNumber, userInfo);
+        return impl.performBankKYC(transactionID, IFSCCode, bankName, accountNumber, userInfo, BankKYCURL);
     }
 
     public eSignServiceReturn getSigedDocument(String eSignResponse, String preSignedTempFile) {
@@ -182,5 +188,11 @@ public class eSign {
     public eSignServiceReturn isValidPdf(String docBase64) {
         eSignImplimentation impl = new eSignImplimentation(pfxpath, password, pfxAlias, proxyIp, proxyPort, proxyreq);
         return impl.isValidPdf(docBase64);
+    }
+
+    private static String getSha256(String input) throws NoSuchAlgorithmException {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+        return Hex.toHexString(hash);
     }
 }

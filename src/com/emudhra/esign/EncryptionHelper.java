@@ -1,7 +1,5 @@
 package com.emudhra.esign;
 
-import esign.text.Utilities;
-import esign.text.pdf.StringUtils;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidAlgorithmParameterException;
@@ -21,9 +19,9 @@ import javax.crypto.spec.SecretKeySpec;
 import org.emcastle.util.encoders.UrlBase64;
 
 public class EncryptionHelper {
-    
-    private EncryptionHelper(){
-        
+
+    private EncryptionHelper() {
+
     }
 
     private static final String PBKDF2WITHHMACSHA1 = "PBKDF2WithHmacSHA1";
@@ -33,10 +31,12 @@ public class EncryptionHelper {
     public static String getEncryptedData(String data, String keyValue) throws UnsupportedEncodingException, NoSuchAlgorithmException, NoSuchPaddingException {
         return encrypt(data, keyValue);
     }
+
     public static String getEncryptedData(String data) throws Exception {
-        if(eSignUtility.isNullOrEmpty(ValidateKitLicence.getEncryptionKey()))
-            throw new Exception("Invalid Pdf Viewer Licece.");
-        return encrypt(data, ValidateKitLicence.getEncryptionKey());
+        if (eSignUtility.isNullOrEmpty(data)) {
+            throw new Exception("Invalid path data.");
+        }
+        return encrypt(data, eSignSettings.getEncryptionKey());
     }
 
     private static String encrypt(String data, String keyValue) {
@@ -51,7 +51,6 @@ public class EncryptionHelper {
             System.arraycopy(secretKey.getEncoded(), 0, key1, 0, 32);
             System.arraycopy(secretKey.getEncoded(), 32, iv, 0, 16);
 
-
             SecretKeySpec skeySpec = new SecretKeySpec(key1, AES);
             AlgorithmParameterSpec ivSpec = new IvParameterSpec(iv);
 
@@ -61,7 +60,7 @@ public class EncryptionHelper {
             byte[] encrypted = cipher.doFinal(data.getBytes(StandardCharsets.UTF_8));
             String encrypteddata = new String(UrlBase64.encode(encrypted));
             return encrypteddata;
-        } catch (NoSuchAlgorithmException | InvalidKeySpecException | NoSuchPaddingException | InvalidKeyException | InvalidAlgorithmParameterException  | IllegalBlockSizeException | BadPaddingException ex) {
+        } catch (NoSuchAlgorithmException | InvalidKeySpecException | NoSuchPaddingException | InvalidKeyException | InvalidAlgorithmParameterException | IllegalBlockSizeException | BadPaddingException ex) {
             return null;
         }
     }
@@ -69,10 +68,12 @@ public class EncryptionHelper {
     public static String getDencryptedData(String encrypted, String key) {
         return decrypt(encrypted, key);
     }
+
     public static String getDencryptedData(String encrypted) throws Exception {
-        if(eSignUtility.isNullOrEmpty(ValidateKitLicence.getEncryptionKey()))
-            throw new Exception("Invalid Pdf Viewer Licece.");
-        return decrypt(encrypted, ValidateKitLicence.getEncryptionKey());
+        if (eSignUtility.isNullOrEmpty(encrypted)) {
+            throw new Exception("Encrypted data cannot be empty.");
+        }
+        return decrypt(encrypted, eSignSettings.getEncryptionKey());
     }
 
     private static String decrypt(String encrypted, String key) {
@@ -92,9 +93,9 @@ public class EncryptionHelper {
             cipher.init(Cipher.DECRYPT_MODE, skeySpec, ivSpec);
             byte[] data = UrlBase64.decode(encrypted);
             byte[] original = cipher.doFinal(data);
-            
+
             return new String(original, StandardCharsets.UTF_8);
-        } catch (NoSuchAlgorithmException  | InvalidKeySpecException | NoSuchPaddingException | InvalidKeyException | InvalidAlgorithmParameterException | IllegalBlockSizeException | BadPaddingException ex) {
+        } catch (NoSuchAlgorithmException | InvalidKeySpecException | NoSuchPaddingException | InvalidKeyException | InvalidAlgorithmParameterException | IllegalBlockSizeException | BadPaddingException ex) {
             return null;
         }
     }
