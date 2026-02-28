@@ -1,0 +1,138 @@
+eSign Java SDK
+Copyright (c) 2025 eMudhra Limited
+
+This product includes software developed by third parties.
+The following third-party libraries are used in this project:
+
+=======================================================================
+Apache Batik - SVG Toolkit
+=======================================================================
+Version: 1.13
+License: Apache License, Version 2.0
+Website: https://xmlgraphics.apache.org/batik/
+Copyright (c) 1999-2020 The Apache Software Foundation
+
+=======================================================================
+Apache Commons IO
+=======================================================================
+Version: 2.4
+License: Apache License, Version 2.0
+Website: https://commons.apache.org/proper/commons-io/
+Copyright (c) 2002-2012 The Apache Software Foundation
+
+=======================================================================
+Apache XML Security for Java (xmlsec)
+=======================================================================
+Version: 2.3.0
+License: Apache License, Version 2.0
+Website: https://santuario.apache.org/
+Copyright (c) 1999-2021 The Apache Software Foundation
+
+=======================================================================
+Apache XMLGraphics Commons
+=======================================================================
+Version: 2.4
+License: Apache License, Version 2.0
+Website: https://xmlgraphics.apache.org/commons/
+Copyright (c) 2006-2019 The Apache Software Foundation
+
+=======================================================================
+Woodstox XML Processor
+=======================================================================
+Version: 5.2.1
+License: Apache License, Version 2.0
+Website: https://github.com/FasterXML/woodstox
+Copyright (c) FasterXML, LLC
+
+=======================================================================
+Stax2 API
+=======================================================================
+Version: 4.2
+License: BSD 2-Clause License
+Website: https://github.com/FasterXML/stax2-api
+Copyright (c) FasterXML, LLC
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+1. Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+=======================================================================
+SLF4J - Simple Logging Facade for Java
+=======================================================================
+Version: 1.7.32 (slf4j-api and slf4j-simple)
+License: MIT License
+Website: https://www.slf4j.org/
+Copyright (c) 2004-2021 QOS.ch
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
+
+=======================================================================
+W3C SVG DOM API
+=======================================================================
+Version: 1.1.0
+License: W3C Software and Document License
+Website: https://www.w3.org/Graphics/SVG/
+Copyright (c) World Wide Web Consortium
+
+=======================================================================
+iText PDF Library (repackaged as esign.text.*)
+=======================================================================
+License: GNU Affero General Public License v3.0 (AGPL-3.0)
+Website: https://itextpdf.com/
+Copyright (c) 1998-2021 iText Group NV
+
+This library is embedded in repackaged form under the esign.text.*
+namespace. The use of this library requires compliance with the AGPL-3.0
+license terms. For commercial/proprietary licensing, contact iText at
+https://itextpdf.com/pricing.
+
+=======================================================================
+Bouncy Castle Cryptography Library (repackaged as org.emcastle.*)
+=======================================================================
+License: MIT License
+Website: https://www.bouncycastle.org/
+Copyright (c) 2000-2021 The Legion of the Bouncy Castle Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
+
+=======================================================================
+Apache License, Version 2.0
+=======================================================================
+The following components are licensed under the Apache License 2.0:
+- Apache Batik
+- Apache Commons IO
+- Apache XML Security for Java
+- Apache XMLGraphics Commons
+- Woodstox XML Processor
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use these files except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.

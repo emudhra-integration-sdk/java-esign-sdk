@@ -1,0 +1,18 @@
+# Build output
+build/
+dist/
+
+# Claude Code
+CLAUDE.md
+
+# Logs
+logs/
+
+# IDE files
+nbproject/private/
+*.class
+*.jar.orig
+
+# OS files
+.DS_Store
+Thumbs.db
