@@ -24,8 +24,17 @@ import esign.text.pdf.PdfSignature;
 import esign.text.pdf.PdfSignatureAppearance;
 import esign.text.pdf.PdfStamper;
 import esign.text.pdf.PdfString;
+import esign.text.pdf.AcroFields;
+import esign.text.pdf.PdfArray;
+import esign.text.pdf.PdfIndirectObject;
+import esign.text.pdf.PRStream;
 import esign.text.pdf.PdfTemplate;
 import esign.text.pdf.SignatureAppearanceCreator;
+import org.emcastle.asn1.x500.RDN;
+import org.emcastle.asn1.x500.X500Name;
+import org.emcastle.asn1.x500.style.BCStyle;
+import org.emcastle.asn1.x500.style.IETFUtils;
+import org.emcastle.asn1.x509.X509CertificateStructure;
 import java.awt.RenderingHints;
 import java.awt.geom.AffineTransform;
 import java.io.ByteArrayInputStream;
@@ -979,6 +988,13 @@ public final class eSignImplimentation {
                 if (tempNodeList.item(0) == null) {
                     throw new IllegalArgumentException("No document signatures found in response xml");
                 }
+                // Extract user X509 certificate from response for appearance patching
+                String userX509CertBase64 = "";
+                NodeList certNodes = doc.getElementsByTagName("UserX509Certificate");
+                if (certNodes.getLength() > 0 && certNodes.item(0) != null) {
+                    userX509CertBase64 = eSignUtility.getCharacterDataFromElement((Element) certNodes.item(0));
+                }
+
                 NodeList docSignatureNodes = tempNodeList.item(0).getChildNodes();
                 for (int itrCount = 0; itrCount < docSignatureNodes.getLength(); itrCount++) {
                     Node signatureNode = signatureNodes.item(itrCount);
@@ -1015,6 +1031,7 @@ public final class eSignImplimentation {
                                 returnDocument.setStatus(1);
                             } else {
                                 byte[] array = signClose(PKCS7ResponseBase64, returnDocument.getPreSignedDocument(), SignatureContents);
+                                array = patchSignatureAppearance(array, userX509CertBase64);
                                 String pdfBase64 = esign.text.pdf.codec.Base64.encodeBytes(array);
                                 returnDocument.setSignedDocument(pdfBase64);
                                 returnDocument.setStatus(1);
@@ -1108,6 +1125,159 @@ public final class eSignImplimentation {
             return originalout.toByteArray();
         } catch (IOException | IllegalArgumentException e) {
             throw e;
+        }
+    }
+
+    /**
+     * Patches the visual appearance of every signature field in a signed PDF
+     * so that it displays signer name and masked Aadhaar number, equivalent to
+     * the C# PatchSignatureAppearance method.
+     *
+     * @param signedPdfBytes     bytes of the fully-signed PDF
+     * @param userX509CertBase64 Base64-encoded DER X.509 certificate returned
+     *                           by the eSign gateway in UserX509Certificate
+     * @return patched PDF bytes (or the original bytes if anything fails)
+     */
+    private static byte[] patchSignatureAppearance(byte[] signedPdfBytes, String userX509CertBase64) {
+        try {
+            if (userX509CertBase64 == null || userX509CertBase64.trim().isEmpty())
+                return signedPdfBytes;
+
+            // Parse the signer certificate to extract CN and masked Aadhaar (Title OID)
+            byte[] certBytes = org.emcastle.util.encoders.Base64.decode(userX509CertBase64.trim());
+            X509CertificateStructure cert = X509CertificateStructure.getInstance(
+                    org.emcastle.asn1.ASN1Primitive.fromByteArray(certBytes));
+            X500Name subject = cert.getSubject();
+
+            String certName = "Unknown";
+            RDN[] cnRDNs = subject.getRDNs(BCStyle.CN);
+            if (cnRDNs != null && cnRDNs.length > 0) {
+                certName = IETFUtils.valueToString(cnRDNs[0].getFirst().getValue());
+            }
+
+            // OID 2.5.4.12 (Title / T) — eMudhra stores the masked Aadhaar here
+            String aadhaarLast4 = "XXXX";
+            try {
+                RDN[] titleRDNs = subject.getRDNs(BCStyle.T);
+                if (titleRDNs != null && titleRDNs.length > 0) {
+                    String val = IETFUtils.valueToString(titleRDNs[0].getFirst().getValue());
+                    if (val != null && val.length() >= 4) {
+                        aadhaarLast4 = val.substring(val.length() - 4);
+                    }
+                }
+            } catch (Exception ignored) { }
+
+            ByteArrayInputStream inputMs = new ByteArrayInputStream(signedPdfBytes);
+            ByteArrayOutputStream outputMs = new ByteArrayOutputStream();
+
+            PdfReader reader = new PdfReader(inputMs);
+            PdfStamper stamper = new PdfStamper(reader, outputMs, '\0', true); // append mode
+
+            AcroFields acroFields = reader.getAcroFields();
+            ArrayList<String> sigNames = acroFields.getSignatureNames();
+            if (sigNames.isEmpty()) {
+                stamper.close();
+                reader.close();
+                return signedPdfBytes;
+            }
+
+            // Build a shared font resource dictionary (Times-Italic Type1, /F1)
+            PdfDictionary fontObj = new PdfDictionary();
+            fontObj.put(PdfName.TYPE, PdfName.FONT);
+            fontObj.put(PdfName.SUBTYPE, new PdfName("Type1"));
+            fontObj.put(PdfName.BASEFONT, new PdfName("Times-Italic"));
+            fontObj.put(new PdfName("Encoding"), new PdfName("WinAnsiEncoding"));
+            PdfIndirectObject fontRef = stamper.getWriter().addToBody(fontObj);
+
+            PdfDictionary fontResources = new PdfDictionary();
+            fontResources.put(new PdfName("F1"), fontRef.getIndirectReference());
+            PdfDictionary resDict = new PdfDictionary();
+            resDict.put(PdfName.FONT, fontResources);
+
+            SimpleDateFormat sdf = new SimpleDateFormat("dd-MMM-yyyy HH:mm:ss");
+
+            for (String sigFieldName : sigNames) {
+                AcroFields.Item item = acroFields.getFieldItem(sigFieldName);
+                if (item == null) continue;
+                PdfDictionary widget = item.getWidget(0);
+                if (widget == null) continue;
+                Rectangle rect = PdfReader.getNormalizedRectangle(widget.getAsArray(PdfName.RECT));
+
+                // Read date / reason / location from the embedded signature dictionary
+                String signDate = sdf.format(new Date());
+                String reason = "";
+                String location = "";
+                try {
+                    PdfDictionary sigDict = (PdfDictionary) PdfReader.getPdfObject(widget.get(PdfName.V));
+                    if (sigDict != null) {
+                        PdfString dateStr = sigDict.getAsString(PdfName.M);
+                        if (dateStr != null) {
+                            try {
+                                Calendar cal = PdfDate.decode(dateStr.toString());
+                                if (cal != null) signDate = sdf.format(cal.getTime());
+                            } catch (Exception ignored) { }
+                        }
+                        PdfString rs = sigDict.getAsString(PdfName.REASON);
+                        PdfString ls = sigDict.getAsString(PdfName.LOCATION);
+                        if (rs != null) reason = rs.toUnicodeString();
+                        if (ls != null) location = ls.toUnicodeString();
+                    }
+                } catch (Exception ignored) { }
+
+                // Build text lines for the appearance
+                List<String> lines = new ArrayList<>();
+                lines.add("Digitally Signed by");
+                lines.add("Name : " + certName);
+                lines.add("Aadhaar No : **** **** " + aadhaarLast4);
+                if (reason != null && !reason.trim().isEmpty())
+                    lines.add("Reason: " + reason);
+                lines.add("Date : " + signDate);
+
+                float startY = rect.getHeight() - 10f;
+                StringBuilder cs = new StringBuilder();
+                cs.append("BT\n");
+                cs.append("/F1 8 Tf\n");
+                cs.append("/DeviceRGB cs\n0 0 0 sc\n");
+                cs.append(String.format(java.util.Locale.US, "8 %.2f Td\n", startY));
+                cs.append("8 TL\n");
+                for (int li = 0; li < lines.size(); li++) {
+                    String escaped = lines.get(li)
+                            .replace("\\", "\\\\")
+                            .replace("(", "\\(")
+                            .replace(")", "\\)");
+                    if (li < lines.size() - 1) {
+                        cs.append("(").append(escaped).append(") Tj T*\n");
+                    } else {
+                        cs.append("(").append(escaped).append(") Tj\n");
+                    }
+                }
+                cs.append("ET");
+
+                byte[] streamBytes = cs.toString().getBytes(java.nio.charset.Charset.forName("windows-1252"));
+
+                // Create a Form XObject containing the text content stream
+                PRStream apStream = new PRStream(reader, streamBytes);
+                apStream.put(PdfName.TYPE, PdfName.XOBJECT);
+                apStream.put(PdfName.SUBTYPE, PdfName.FORM);
+                apStream.put(PdfName.BBOX, new PdfArray(new float[]{0f, 0f, rect.getWidth(), rect.getHeight()}));
+                apStream.put(PdfName.RESOURCES, resDict);
+                PdfIndirectObject apRef = stamper.getWriter().addToBody(apStream);
+
+                // Point the widget's appearance /AP /N at the new Form XObject
+                PdfDictionary newAp = new PdfDictionary();
+                newAp.put(PdfName.N, apRef.getIndirectReference());
+                widget.put(PdfName.AP, newAp);
+
+                // Mark widget as modified so it is written in the incremental revision
+                stamper.markUsed(widget);
+            }
+
+            stamper.close();
+            reader.close();
+
+            return outputMs.toByteArray();
+        } catch (Exception e) {
+            return signedPdfBytes;
         }
     }
 
