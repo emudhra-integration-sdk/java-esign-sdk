@@ -36,12 +36,14 @@ Phase 1: getGatewayParameter()
   Your App --> SDK (pre-sign PDF, compute hash) --> eSign Gateway --> Returns redirect URL
 
 Phase 2: User Authentication + getSigedDocument()
-  User --> eMudhra Portal (OTP/Fingerprint/IRIS/Face) --> Your Callback URL --> SDK (inject signature)
+  User --> eMudhra Portal (OTP/Fingerprint/IRIS/Face) --> Your Callback URL --> SDK (inject signature + patch appearance)
 ```
 
 1. **Phase 1** - Your application sends the PDF to the SDK. The SDK creates a signature placeholder, computes a SHA-256 hash, builds an XML request, signs it with your PFX certificate, and POSTs to the eSign gateway. You get back a gateway parameter to redirect the user.
 
 2. **Phase 2** - The user authenticates on eMudhra's portal. eMudhra sends the PKCS7 signature back to your callback URL. You pass it to the SDK, which injects the signature into the pre-signed PDF and returns the signed document as Base64.
+
+> **New in this release:** After injecting the PKCS7 signature, the SDK now automatically patches the visual appearance of every signature field. The signed PDF will display the signer's name and masked Aadhaar number (e.g. `**** **** 1234`) extracted from the `UserX509Certificate` returned by the gateway — no extra configuration required.
 
 ---
 

@@ -14,6 +14,7 @@ A Java SDK for integrating eMudhra's Aadhaar-based and PAN-based eSign service i
 - **Bank KYC** — Perform Bank KYC verification through eMudhra
 - **Configurable Logging** — File-based logging with rotation and multiple log levels
 - **Proxy Support** — HTTP proxy with optional authentication
+- **NEW: Signature Appearance Patching** — Automatically updates the visual appearance of signed signature fields with the signer's name and masked Aadhaar number extracted from the gateway-returned certificate
 
 ## Prerequisites
 
