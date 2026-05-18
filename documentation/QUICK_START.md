@@ -14,6 +14,7 @@ A Java SDK for eMudhra's Aadhaar-based and PAN-based eSign service. Implements *
 - [Page Selection and Coordinates](#page-selection-and-coordinates)
 - [Multi-Document Signing](#multi-document-signing)
 - [Hash-Based Signing](#hash-based-signing)
+- [Aadhaar Appearance Patching](#aadhaar-appearance-patching)
 - [API Reference](#api-reference)
   - [Constructors](#constructors)
   - [Methods](#methods)
@@ -43,7 +44,7 @@ Phase 2: User Authentication + getSigedDocument()
 
 2. **Phase 2** - The user authenticates on eMudhra's portal. eMudhra sends the PKCS7 signature back to your callback URL. You pass it to the SDK, which injects the signature into the pre-signed PDF and returns the signed document as Base64.
 
-> **New in this release:** After injecting the PKCS7 signature, the SDK now automatically patches the visual appearance of every signature field. The signed PDF will display the signer's name and masked Aadhaar number (e.g. `**** **** 1234`) extracted from the `UserX509Certificate` returned by the gateway — no extra configuration required.
+> **New in this release:** The SDK now includes optional Aadhaar appearance patching. When enabled via `setShowAadhaarOnSignature(true)` on the builder, the visual appearance of every signature field is automatically updated after signing to display the signer's name and masked Aadhaar number (e.g. `**** **** 1234`) extracted from the gateway-returned `UserX509Certificate`. The patch auto-fits the font size so text always stays within the signature box. By default this feature is off and the standard iText appearance is preserved.
 
 ---
 
@@ -617,6 +618,54 @@ eSignInput input = new eSignInput("Document Info", "a1b2c3d4e5f6...", "https://e
 
 ---
 
+## Aadhaar Appearance Patching
+
+After the gateway returns the PKCS7 signature, the SDK can optionally patch the visual appearance of every signature field to display the signer's real name and masked Aadhaar number — both extracted automatically from the `UserX509Certificate` in the gateway response.
+
+### Enabling the feature
+
+Set `setShowAadhaarOnSignature(true)` on the builder before Phase 1:
+
+```java
+eSignInput input = eSignInputBuilder.init()
+    .setDocBase64(pdfBase64)
+    .setDocInfo("Agreement")
+    .setSignedBy("John Doe")
+    .setAppearanceType(eSign.AppearanceType.StandardSignature)
+    .setPageTobeSigned(eSign.PageTobeSigned.Last)
+    .setCoordinates(eSign.Coordinates.BottomRight)
+    .setShowAadhaarOnSignature(true)   // <-- opt in
+    .build();
+```
+
+No changes are needed in Phase 2 (`getSigedDocument`). The flag is stored in the pre-sign temp file and applied automatically when the signature is finalized.
+
+### What the patched appearance shows
+
+```
+Digitally Signed by
+Name : Ramesh Kumar
+Aadhaar No : **** **** 6789
+Reason: Agreement Signing          (if Reason was set)
+Date : 18-May-2026 14:35:22
+```
+
+### Auto-fit font sizing
+
+The font size is computed dynamically so all lines fit within the signature box:
+
+- **Height constraint** — `fontSize = boxHeight / numberOfLines`
+- **Width constraint** — each line is measured using Times-Italic font metrics; the font is scaled down if any line would exceed the box width
+- **Clamped** to a minimum of 4 pt and maximum of 10 pt for readability
+
+This ensures the text never overflows the signature box regardless of box dimensions or text length.
+
+### Default behaviour (when not set / set to false)
+
+The iText signature appearance configured during Phase 1 (signed-by name, reason, location, date) is preserved unchanged. No certificate extraction or appearance rewriting occurs.
+
+---
+
 ## API Reference
 
 ### Constructors
@@ -870,6 +919,7 @@ Builder for creating `eSignInput` objects. Start with `eSignInputBuilder.init()`
 | `setBorderRequired(boolean)` | boolean | Show signature border |
 | `setTickRequired(boolean)` | boolean | Show tick mark on signature |
 | `setPdfPassword(String)` | String | Password for encrypted PDFs |
+| `setShowAadhaarOnSignature(boolean)` | boolean | When `true`, patches the signature appearance after signing to display the signer name and masked Aadhaar number extracted from the gateway certificate. Font size is auto-fitted to the signature box. Default: `false`. |
 | `build()` | eSignInput | Build the final input object |
 
 ---

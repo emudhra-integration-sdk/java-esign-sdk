@@ -41,9 +41,14 @@ public final class eSignInput {
     private boolean TickRequired;
     private ColoredGraphicInputs coloredGraphicInputs;
     private String pdfPassword;
+    private boolean showAadhaarOnSignature;
 
     public String getPdfPassword() {
         return pdfPassword;
+    }
+
+    public boolean isShowAadhaarOnSignature() {
+        return showAadhaarOnSignature;
     }
 
     public boolean isBorderRequired() {
@@ -199,26 +204,26 @@ public final class eSignInput {
     }
 
     public eSignInput(String docInfo, String docHash, String docURL) {
-        this("", docInfo, docURL, "", "", "", true, PageTobeSigned.Specify, Coordinates.TopRight, "", "", "", docHash, eSign.InputType.HASH, false, null, -1, "", eSign.AppearanceType.StandardSignature, "", null, null, null, false, false, "");
+        this("", docInfo, docURL, "", "", "", true, PageTobeSigned.Specify, Coordinates.TopRight, "", "", "", docHash, eSign.InputType.HASH, false, null, -1, "", eSign.AppearanceType.StandardSignature, "", null, null, null, false, false, "", false);
     }
 
     public eSignInput(String docBase64, String docInfo, String docURL, String location, String reason, String signedBy, boolean coSign, PageTobeSigned page, Coordinates coordinates, String appearanceText) {
-        this(docBase64, docInfo, docURL, location, reason, signedBy, coSign, page, coordinates, "", "", appearanceText, "", eSign.InputType.PDF, false, null, -1, "", eSign.AppearanceType.StandardSignature, "", null, null, null, false, false, "");
+        this(docBase64, docInfo, docURL, location, reason, signedBy, coSign, page, coordinates, "", "", appearanceText, "", eSign.InputType.PDF, false, null, -1, "", eSign.AppearanceType.StandardSignature, "", null, null, null, false, false, "", false);
     }
 
     public eSignInput(String docBase64, String docInfo, String docURL, String location, String reason, String signedBy, boolean coSign, Coordinates coordinates, String pageNumbers, String appearanceText) {
-        this(docBase64, docInfo, docURL, location, reason, signedBy, coSign, PageTobeSigned.Specify, coordinates, pageNumbers, "", appearanceText, "", eSign.InputType.PDF, false, null, -1, "", eSign.AppearanceType.StandardSignature, "", null, null, null, false, false, "");
+        this(docBase64, docInfo, docURL, location, reason, signedBy, coSign, PageTobeSigned.Specify, coordinates, pageNumbers, "", appearanceText, "", eSign.InputType.PDF, false, null, -1, "", eSign.AppearanceType.StandardSignature, "", null, null, null, false, false, "", false);
     }
 
     public eSignInput(String docBase64, String docInfo, String docURL, String location, String reason, String signedBy, boolean coSign, String pageLevelCoordinates, String appearanceText) {
-        this(docBase64, docInfo, docURL, location, reason, signedBy, coSign, PageTobeSigned.PageLevel, null, "", pageLevelCoordinates, appearanceText, "", eSign.InputType.PDF, false, null, -1, "", eSign.AppearanceType.StandardSignature, "", null, null, null, false, false, "");
+        this(docBase64, docInfo, docURL, location, reason, signedBy, coSign, PageTobeSigned.PageLevel, null, "", pageLevelCoordinates, appearanceText, "", eSign.InputType.PDF, false, null, -1, "", eSign.AppearanceType.StandardSignature, "", null, null, null, false, false, "", false);
     }
 
     public eSignInput(String docBase64, String docInfo, String docURL, String location, String reason, String signedBy, boolean coSign, String pageLevelCoordinates, String appearanceText, boolean rightOrigin) {
-        this(docBase64, docInfo, docURL, location, reason, signedBy, coSign, PageTobeSigned.PageLevel, null, "", pageLevelCoordinates, appearanceText, "", eSign.InputType.PDF, rightOrigin, null, -1, "", eSign.AppearanceType.StandardSignature, "", null, null, null, false, false, "");
+        this(docBase64, docInfo, docURL, location, reason, signedBy, coSign, PageTobeSigned.PageLevel, null, "", pageLevelCoordinates, appearanceText, "", eSign.InputType.PDF, rightOrigin, null, -1, "", eSign.AppearanceType.StandardSignature, "", null, null, null, false, false, "", false);
     }
 
-    protected eSignInput(String docBase64, String docInfo, String docURL, String location, String reason, String signedBy, boolean coSign, PageTobeSigned pageTobeSigned, Coordinates coordinates, String pageNumbers, String pageLevelCoordinates, String appearanceText, String docHash, eSign.InputType inputType, boolean rightOrigin, ContentSearch contentSearch, int signatureFontSize, String signatureImage, eSign.AppearanceType appearanceType, String oneLiner, AdvanceSignature advanceSignature, ColoredGraphicInputs coloredGraphicInputs, CustomStyle customStyle, boolean isBorderRequired, boolean isTickRequired, String pdfPassword) {
+    protected eSignInput(String docBase64, String docInfo, String docURL, String location, String reason, String signedBy, boolean coSign, PageTobeSigned pageTobeSigned, Coordinates coordinates, String pageNumbers, String pageLevelCoordinates, String appearanceText, String docHash, eSign.InputType inputType, boolean rightOrigin, ContentSearch contentSearch, int signatureFontSize, String signatureImage, eSign.AppearanceType appearanceType, String oneLiner, AdvanceSignature advanceSignature, ColoredGraphicInputs coloredGraphicInputs, CustomStyle customStyle, boolean isBorderRequired, boolean isTickRequired, String pdfPassword, boolean showAadhaarOnSignature) {
         this.coSign = coSign;
         this.coordinates = coordinates;
         this.docBase64 = docBase64;
@@ -245,6 +250,7 @@ public final class eSignInput {
         this.BorderRequired = isBorderRequired;
         this.TickRequired = isTickRequired;
         this.pdfPassword = pdfPassword;
+        this.showAadhaarOnSignature = showAadhaarOnSignature;
     }
 
 }

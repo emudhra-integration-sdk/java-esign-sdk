@@ -784,7 +784,7 @@ public final class eSignImplimentation {
                                 byte[] hashdata = Base64.decode(hashData);
                                 hexHashDocument = Hex.toHexString(hashdata);
                             }
-                            ReturnDocument returnDocument = new ReturnDocument("", count, input.getDocInfo(), input.getDocURL(), hexHashDocument, preSignedPdf, eSign.InputType.PDF);
+                            ReturnDocument returnDocument = new ReturnDocument("", count, input.getDocInfo(), input.getDocURL(), hexHashDocument, preSignedPdf, eSign.InputType.PDF, input.isShowAadhaarOnSignature());
                             returnDocuments.add(returnDocument);
                             count++;
                         } catch (Exception e) {
@@ -1031,7 +1031,9 @@ public final class eSignImplimentation {
                                 returnDocument.setStatus(1);
                             } else {
                                 byte[] array = signClose(PKCS7ResponseBase64, returnDocument.getPreSignedDocument(), SignatureContents);
-                                array = patchSignatureAppearance(array, userX509CertBase64);
+                                if (returnDocument.isShowAadhaarOnSignature()) {
+                                    array = patchSignatureAppearance(array, userX509CertBase64);
+                                }
                                 String pdfBase64 = esign.text.pdf.codec.Base64.encodeBytes(array);
                                 returnDocument.setSignedDocument(pdfBase64);
                                 returnDocument.setStatus(1);
@@ -1233,13 +1235,40 @@ public final class eSignImplimentation {
                     lines.add("Reason: " + reason);
                 lines.add("Date : " + signDate);
 
-                float startY = rect.getHeight() - 10f;
+                // Auto-fit font size so all lines stay within the signature box
+                final float leftMargin = 4f;
+                final float rightMargin = 4f;
+                final float topMargin = 3f;
+                final float bottomMargin = 3f;
+                float availableWidth = rect.getWidth() - leftMargin - rightMargin;
+                float availableHeight = rect.getHeight() - topMargin - bottomMargin;
+
+                // Start from height-based maximum
+                float fontSize = (lines.isEmpty()) ? 8f : availableHeight / lines.size();
+
+                // Shrink further if any line is wider than the box using BaseFont metrics
+                try {
+                    BaseFont bf = BaseFont.createFont(BaseFont.TIMES_ITALIC, BaseFont.CP1252, BaseFont.NOT_EMBEDDED);
+                    for (String line : lines) {
+                        float lineWidth = bf.getWidthPoint(line, fontSize);
+                        if (lineWidth > availableWidth && lineWidth > 0) {
+                            float scaled = fontSize * availableWidth / lineWidth;
+                            if (scaled < fontSize) fontSize = scaled;
+                        }
+                    }
+                } catch (Exception ignored) { }
+
+                // Clamp to a readable range
+                fontSize = Math.max(4f, Math.min(fontSize, 10f));
+                float leading = fontSize;
+                float startY = rect.getHeight() - topMargin - fontSize;
+
                 StringBuilder cs = new StringBuilder();
                 cs.append("BT\n");
-                cs.append("/F1 8 Tf\n");
+                cs.append(String.format(java.util.Locale.US, "/F1 %.2f Tf\n", fontSize));
                 cs.append("/DeviceRGB cs\n0 0 0 sc\n");
-                cs.append(String.format(java.util.Locale.US, "8 %.2f Td\n", startY));
-                cs.append("8 TL\n");
+                cs.append(String.format(java.util.Locale.US, "%.2f %.2f Td\n", leftMargin, startY));
+                cs.append(String.format(java.util.Locale.US, "%.2f TL\n", leading));
                 for (int li = 0; li < lines.size(); li++) {
                     String escaped = lines.get(li)
                             .replace("\\", "\\\\")

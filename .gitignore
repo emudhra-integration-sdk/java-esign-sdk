@@ -4,6 +4,7 @@ dist/
 
 # Claude Code
 CLAUDE.md
+.claude/
 
 # Logs
 logs/

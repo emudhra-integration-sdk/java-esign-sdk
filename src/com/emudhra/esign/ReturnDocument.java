@@ -26,8 +26,13 @@ public final class ReturnDocument {
     private String errorCode;
     private int status;
     private eSign.InputType inputType;
+    private boolean showAadhaarOnSignature;
 
     protected ReturnDocument(String signedDocument, int docId, String docInfo, String docURL, String documentHash, String preSignedDocument, eSign.InputType inputType) {
+        this(signedDocument, docId, docInfo, docURL, documentHash, preSignedDocument, inputType, false);
+    }
+
+    protected ReturnDocument(String signedDocument, int docId, String docInfo, String docURL, String documentHash, String preSignedDocument, eSign.InputType inputType, boolean showAadhaarOnSignature) {
         this.signedDocument = signedDocument;
         this.documentHash = documentHash;
         this.docURL = docURL;
@@ -35,11 +40,16 @@ public final class ReturnDocument {
         this.preSignedDocument = preSignedDocument;
         this.docId = docId;
         this.inputType = inputType;
+        this.showAadhaarOnSignature = showAadhaarOnSignature;
     }
 
     protected String getReturnDocumentObjBase64() throws UnsupportedEncodingException {
-        String returnDocument = Integer.toString(docId) + "|" + docInfo + "|" + docURL + "|" + documentHash + "|" + preSignedDocument;
+        String returnDocument = Integer.toString(docId) + "|" + docInfo + "|" + docURL + "|" + documentHash + "|" + preSignedDocument + "|" + showAadhaarOnSignature;
         return org.emcastle.util.encoders.Base64.toBase64String(returnDocument.getBytes("utf-8"));
+    }
+
+    public boolean isShowAadhaarOnSignature() {
+        return showAadhaarOnSignature;
     }
 
     public ReturnDocument(String returnDocumentBase64) {
@@ -47,9 +57,11 @@ public final class ReturnDocument {
             byte[] decodedBytes = org.emcastle.util.encoders.Base64.decode(returnDocumentBase64);
             String returnDocument = new String(decodedBytes, StandardCharsets.UTF_8);
             String[] returnDocumentValues = returnDocument.split("\\|");
-            if (returnDocumentValues.length == 5) {
+            if (returnDocumentValues.length >= 5) {
                 this.preSignedDocument = returnDocumentValues[4];
-//                throw new IllegalArgumentException("invalid return Document");
+            }
+            if (returnDocumentValues.length >= 6) {
+                this.showAadhaarOnSignature = Boolean.parseBoolean(returnDocumentValues[5]);
             }
             int documentId = 0;
             if (eSignUtility.tryParseInt(returnDocumentValues[0])) {

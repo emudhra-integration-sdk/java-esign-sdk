@@ -39,6 +39,7 @@ public class eSignInputBuilder {
     private boolean borderRequired;
     private boolean tickRequired;
     private String pdfPassword;
+    private boolean showAadhaarOnSignature = false;
 
     private eSign.InputType inputType = eSign.InputType.PDF;
 
@@ -181,7 +182,18 @@ public class eSignInputBuilder {
         return this;
     }
 
+    /**
+     * When set to true, the post-sign step will patch the signature appearance
+     * to display the signer name and masked Aadhaar number extracted from the
+     * gateway certificate. When false (default), the iText default appearance
+     * set during pre-sign is preserved.
+     */
+    public eSignInputBuilder setShowAadhaarOnSignature(boolean showAadhaarOnSignature) {
+        this.showAadhaarOnSignature = showAadhaarOnSignature;
+        return this;
+    }
+
     public eSignInput build() {
-        return new eSignInput(this.docBase64, this.docInfo, this.docURL, this.location, this.reason, this.signedBy, this.coSign, this.pageTobeSigned, this.coordinates, this.pageNumbers, this.pageLevelCoordinates, this.appearanceText, this.docHash, this.inputType, this.rightOrigin, this.contentSearch, this.signatureFontSize, this.signatureImage, this.appearanceType, this.oneLiner, this.advanceSignature, this.coloredGraphicInputs, this.customStyle, this.borderRequired, this.tickRequired,this.pdfPassword);
+        return new eSignInput(this.docBase64, this.docInfo, this.docURL, this.location, this.reason, this.signedBy, this.coSign, this.pageTobeSigned, this.coordinates, this.pageNumbers, this.pageLevelCoordinates, this.appearanceText, this.docHash, this.inputType, this.rightOrigin, this.contentSearch, this.signatureFontSize, this.signatureImage, this.appearanceType, this.oneLiner, this.advanceSignature, this.coloredGraphicInputs, this.customStyle, this.borderRequired, this.tickRequired, this.pdfPassword, this.showAadhaarOnSignature);
     }
 }
