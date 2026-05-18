@@ -1034,7 +1034,7 @@ public final class eSignImplimentation {
                                 if (returnDocument.isShowAadhaarOnSignature()) {
                                     array = patchSignatureAppearance(array, userX509CertBase64);
                                 }
-                                String pdfBase64 = esign.text.pdf.codec.Base64.encodeBytes(array);
+                                String pdfBase64 = java.util.Base64.getEncoder().encodeToString(array);
                                 returnDocument.setSignedDocument(pdfBase64);
                                 returnDocument.setStatus(1);
                             }
