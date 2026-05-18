@@ -51,7 +51,7 @@ Phase 2: User Authentication + getSigedDocument()
 ## Prerequisites
 
 - **Java 8** or higher
-- **eSignASPLibrary5_10.jar** (the SDK JAR from `dist/`)
+- **eSignASPLibrary5_5.jar** (the SDK JAR from `dist/`)
 - **All dependency JARs** from the `lib/` folder:
   - batik-all-1.13.jar
   - commons-io-2.4.jar
@@ -1141,6 +1141,6 @@ ant compile
 ant clean
 ```
 
-Output JAR: `dist/eSignASPLibrary5_10.jar`
+Output JAR: `dist/eSignASPLibrary5_5.jar`
 
 The compiled JAR and all dependency JARs in `lib/` must be on your classpath.
