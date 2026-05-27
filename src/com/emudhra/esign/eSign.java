@@ -128,6 +128,7 @@ public class eSign {
 
     public eSign(String ASPID, String eSignURL, String eSignURLV2, String pfxpath, String password, String pfxAlias, boolean proxyreq,
             String proxyIp, int proxyPort, int sessionTimeout, eSignSettings.LogType logType, String ProxyUserID, String ProxyUserPassword, String pdfViewerLicence, int SignatureContents) throws NoSuchAlgorithmException {
+        eSignSettings.setLogType(logType);   // persist so initFileHandler uses the right level
         this.logger = EsignLoggerFactory.getLogger(eSign.class, null, logType);
         Security.addProvider(new emCastleProvider());
         this.pfxpath = pfxpath;

@@ -179,6 +179,9 @@ public final class eSignImplimentation {
             if (!dir.exists()) {
                 dir.mkdirs();
             }
+            // Attach file logger to tempFolder/logs — writable on every platform
+            // (Android, server, desktop). No-op if already attached or logging is off.
+            EsignLoggerFactory.initFileHandler(tempFolder + File.separator + "logs");
 
             Calendar cal = Calendar.getInstance();
             cal.add(Calendar.MINUTE, 0);
@@ -788,14 +791,13 @@ public final class eSignImplimentation {
                             returnDocuments.add(returnDocument);
                             count++;
                         } catch (Exception e) {
-//                        e.printStackTrace();
-                            LOGGER.warning("" + e);
-                            ReturnDocument returnDocument = new ReturnDocument(0, "Unable to generate appreance - " + e.getMessage(), "ESS-108", 0);
+                            LOGGER.log(java.util.logging.Level.WARNING, "Unable to generate appearance (inner)", e);
+                            ReturnDocument returnDocument = new ReturnDocument(0, "Unable to generate appreance - " + e, "ESS-108", 0);
                             returnDocuments.add(returnDocument);
                         }
                     } catch (Exception e) {
-                        LOGGER.warning("" + e);
-                        ReturnDocument returnDocument = new ReturnDocument(0, "Unable to generate appreance - " + e.getMessage(), "ESS-108", 0);
+                        LOGGER.log(java.util.logging.Level.WARNING, "Unable to generate appearance (outer)", e);
+                        ReturnDocument returnDocument = new ReturnDocument(0, "Unable to generate appreance - " + e, "ESS-108", 0);
                         returnDocuments.add(returnDocument);
                     }
                 } else if (input.getInputType() == eSign.InputType.HASH) {
@@ -836,15 +838,16 @@ public final class eSignImplimentation {
             String responseXML = "";
             try {
                 String url = (esignType == eSign.eSignAPIVersion.V2) ? eSignSettings.getESIGNURLV2() : eSignSettings.getESIGNURL();
-                responseXML = HttpsConnection_weblogic.excutePostHttpsXml(url, URLEncodedsignedRequestXML, proxyIp, proxyPort, proxyreq, transactionID);
+                responseXML = HttpsConnection.excutePostHttpsXml(url, URLEncodedsignedRequestXML, proxyIp, proxyPort, proxyreq, transactionID);
             } catch (Exception e) {
+                LOGGER.log(java.util.logging.Level.WARNING, "Unable to call eSign URL for txn: " + transactionID, e);
                 serviceReturnObj.setPreSignedTempFile(tempFilePath);
                 serviceReturnObj.setRequestXML(signedRequestXML);
                 serviceReturnObj.setResponseXML(responseXML);
                 serviceReturnObj.setTransactionID(transactionID);
                 serviceReturnObj.setErrorCode("ESS-103");
                 serviceReturnObj.setStatus(0);
-                serviceReturnObj.setErrorMessage("Unable to call eSign Url" + e.getMessage());
+                serviceReturnObj.setErrorMessage("Unable to call eSign Url: " + e);
                 return serviceReturnObj;
             }
             if (responseXML.isEmpty()) {
@@ -902,10 +905,11 @@ public final class eSignImplimentation {
             serviceReturnObj.setReturnValues(docsToReturn);
             return serviceReturnObj;
         } catch (Exception e) {
+            LOGGER.log(java.util.logging.Level.WARNING, "Unexpected exception in getGatewayParameter for txn: " + transactionID, e);
             serviceReturnObj.setTransactionID(transactionID);
             serviceReturnObj.setErrorCode("ESS-999");
             serviceReturnObj.setStatus(0);
-            serviceReturnObj.setErrorMessage(e.getMessage());
+            serviceReturnObj.setErrorMessage(e.toString());
             return serviceReturnObj;
         }
     }
@@ -1058,9 +1062,10 @@ public final class eSignImplimentation {
             serviceReturnObj.setErrorMessage("Unknown error invalid status in xml");
             return serviceReturnObj;
         } catch (Exception e) {
+            LOGGER.log(java.util.logging.Level.WARNING, "Unexpected exception in getSigedDocument", e);
             serviceReturnObj.setErrorCode("ESS-999");
             serviceReturnObj.setStatus(0);
-            serviceReturnObj.setErrorMessage(e.getMessage());
+            serviceReturnObj.setErrorMessage(e.toString());
             return serviceReturnObj;
         }
     }
