@@ -2,6 +2,21 @@
 
 A Java SDK for integrating eMudhra's Aadhaar-based and PAN-based eSign service into your applications. Implements **two-phase remote digital signing** — PDFs are pre-signed locally (SHA-256 hash computed), sent to eMudhra's eSign gateway for user authentication (OTP/Fingerprint/IRIS/Face), and the returned PKCS7 signature is injected back into the PDF.
 
+## Important Notice
+
+> **This repository is a reference implementation published by eMudhra as open source.**
+>
+> eMudhra publishes this source code to demonstrate how hash-based digital signing can be integrated with the eMudhra eSign API. **eMudhra's responsibility is limited to the eSign API and gateway services.** This code is provided as-is for the community to study, build, and integrate into their own applications.
+>
+> - eMudhra does **not** distribute or maintain a pre-built JAR from this repository.
+> - You are expected to **build this code yourself** from source and integrate it into your application.
+> - Any modifications, redistribution, or production use of this code are solely at your own discretion and responsibility, subject to the [AGPL-3.0 license](LICENSE).
+> - For API access, gateway URLs, ASP ID, and PFX certificates, contact [eMudhra](https://www.emudhra.com).
+
+[![Build](https://github.com/emudhra-integration-sdk/java-esign-sdk/actions/workflows/build.yml/badge.svg)](https://github.com/emudhra-integration-sdk/java-esign-sdk/actions/workflows/build.yml)
+
+---
+
 ## Features
 
 - **Aadhaar Signing (V2 API)** — OTP, Fingerprint, IRIS, and Face authentication
@@ -77,7 +92,9 @@ See the [full Quick Start guide](documentation/QUICK_START.md) for the complete 
 
 ## Building from Source
 
-This is an Apache Ant project targeting Java 8.
+This repository does not provide a downloadable JAR. You are expected to build it yourself and embed it in your application.
+
+This is an Apache Ant / NetBeans project targeting Java 8.
 
 ```bash
 # Clean and build the JAR
@@ -90,7 +107,9 @@ ant compile
 ant clean
 ```
 
-Output JAR: `dist/eSignASPLibrary5_5.jar`
+Output: `dist/eSignASPLibrary5_5.jar`
+
+> The build badge above confirms the source compiles correctly on every commit. A passing build means the code is ready for you to compile and use.
 
 ## Dependencies
 
