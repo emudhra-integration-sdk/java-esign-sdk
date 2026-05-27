@@ -20,7 +20,7 @@ jobs:
           java-version: '11'
           distribution: 'temurin'
 
-      - name: Build JAR with Ant
+      - name: Build with Ant
         # Four JARs in project.properties have hardcoded Windows paths.
         # Override them here so the Linux runner uses the lib/ copies instead.
         run: |
@@ -29,10 +29,3 @@ jobs:
             -Dfile.reference.commons-io-2.4.jar=lib/commons-io-2.4.jar \
             -Dfile.reference.org.w3c.dom.svg-1.1.0.jar=lib/org.w3c.dom.svg-1.1.0.jar \
             -Dfile.reference.xmlgraphics-commons-2.4.jar=lib/xmlgraphics-commons-2.4.jar
-
-      - name: Upload JAR artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: eSignASPLibrary5_5
-          path: dist/eSignASPLibrary5_5.jar
-          retention-days: 90
