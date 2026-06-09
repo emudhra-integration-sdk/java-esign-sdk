@@ -79,9 +79,7 @@ public final class HttpsConnection {
                     connection = (HttpsURLConnection) url.openConnection();
                 }
             } catch (IOException ee) {
-                //logger.error("Exception in HttpsConnection.excutePostHttpsXml while openning connection " + Arrays.toString(ee.getStackTrace()));
-                logger.warning("Exception in HttpsConnection.excutePostHttpsXml for session/read timeout :" + sessionTimeout + " mili second");
-                //logger.info("Exception in HttpsConnection.excutePostHttpsXml while openning connection " + ee);
+                logger.warning("Exception in HttpsConnection.excutePostHttpsXml (timeout=" + sessionTimeout + "ms): " + ee);
                 throw ee;
             }
             if (sessionTimeout > 0) {
@@ -114,8 +112,7 @@ public final class HttpsConnection {
             logger.info("HttpsConnection.excutePostHttpsXml END");
             return response.toString();
         } catch (Exception e) {
-            logger.warning("Exception in HttpsConnection.excutePostHttpsXml for session/read timeout :" + sessionTimeout + " mili second.");
-            //logger.info("Exception in HttpsConnection.excutePostHttpsXml " + e);
+            logger.warning("Exception in HttpsConnection.excutePostHttpsXml (timeout=" + sessionTimeout + "ms): " + e);
             throw e;
             //return e.toString();
         } finally {
