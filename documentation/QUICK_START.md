@@ -1130,17 +1130,58 @@ new eSign(ASPID, url, urlV2, pfx, pass, alias, false, "", 0, 0,
 
 This is an Apache Ant project targeting Java 8.
 
+### Prerequisites
+
+| Tool | Version | Notes |
+|---|---|---|
+| JDK | 8 or higher | Must be JDK, not just JRE. Verify with `javac -version` |
+| Apache Ant | 1.9 or higher | Download from https://ant.apache.org. Verify with `ant -version` |
+
+> **Note:** All dependency JARs are already included in the `lib/` folder of the repository. No manual dependency download is required.
+
+### Build Steps
+
+**1. Clone the repository**
 ```bash
-# Clean and build the JAR
-ant clean jar
-
-# Compile only
-ant compile
-
-# Clean build artifacts
-ant clean
+git clone https://github.com/emudhra-integration-sdk/java-esign-sdk.git
+cd java-esign-sdk
 ```
 
-Output JAR: `dist/eSignASPLibrary5_5.jar`
+**2. Build the JAR**
+```bash
+ant clean jar
+```
 
-The compiled JAR and all dependency JARs in `lib/` must be on your classpath.
+**3. Verify the output**
+
+The built JAR will be at:
+```
+dist/eSignASPLibrary5_5.jar
+```
+
+### Common Build Errors
+
+**`Unable to find JAR` or `\lib\batik-all-1.13.jar does not exist`**
+
+This means the dependency paths in `nbproject/project.properties` are not pointing to the `lib/` folder correctly. Verify the following entries exist and use relative paths:
+
+```properties
+file.reference.batik-all-1.13.jar=lib\\batik-all-1.13.jar
+file.reference.commons-io-2.4.jar=lib\\commons-io-2.4.jar
+file.reference.org.w3c.dom.svg-1.1.0.jar=lib\\org.w3c.dom.svg-1.1.0.jar
+file.reference.xmlgraphics-commons-2.4.jar=lib\\xmlgraphics-commons-2.4.jar
+```
+
+If you see absolute paths like `D:\env\eSign\lib\...` in that file, replace them with the relative `lib\\` paths shown above.
+
+**`ant: command not found`**
+
+Apache Ant is not installed or not on your PATH. Download it from https://ant.apache.org, extract it, and add the `bin/` directory to your system PATH.
+
+**`javac: command not found` or `No compiler is provided`**
+
+A JRE is installed instead of a JDK. Install JDK 8 or higher and ensure `JAVA_HOME` points to the JDK directory.
+
+### Using the JAR
+
+Once built, add `dist/eSignASPLibrary5_5.jar` and all JARs from the `lib/` folder to your project's classpath.
