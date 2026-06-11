@@ -151,10 +151,21 @@ public class EsignLoggerFactory {
                 @Override
                 public String format(LogRecord record) {
                     String time = dateFormat.format(new Date(record.getMillis()));
-                    return time + "\t"
-                            + "[" + record.getLevel() + "]\t"
-                            + "[" + record.getSourceClassName() + "]\t\t"
-                            + record.getMessage() + "\n";
+                    StringBuilder sb = new StringBuilder();
+                    sb.append(time).append("\t")
+                      .append("[").append(record.getLevel()).append("]\t")
+                      .append("[").append(record.getSourceClassName()).append("]\t\t")
+                      .append(record.getMessage());
+                    Throwable thrown = record.getThrown();
+                    if (thrown != null) {
+                        sb.append(" | ").append(thrown);
+                        Throwable cause = thrown.getCause();
+                        if (cause != null) {
+                            sb.append(" caused by: ").append(cause);
+                        }
+                    }
+                    sb.append("\n");
+                    return sb.toString();
                 }
             });
 

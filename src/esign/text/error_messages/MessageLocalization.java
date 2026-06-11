@@ -14,7 +14,7 @@ public final class MessageLocalization {
 
     private static HashMap<String, String> currentLanguage;
 
-    private static final String BASE_PATH = "com/itextpdf/text/l10n/error/";
+    private static final String BASE_PATH = "esign/text/l10n/error/";
 
     static {
         try {
@@ -93,7 +93,7 @@ public final class MessageLocalization {
             } else {
                 file = language + ".lng";
             }
-            is = StreamUtil.getResourceStream("com/itextpdf/text/l10n/error/" + file, (new MessageLocalization()).getClass().getClassLoader());
+            is = StreamUtil.getResourceStream("esign/text/l10n/error/" + file, (new MessageLocalization()).getClass().getClassLoader());
             if (is != null) {
                 return readLanguageStream(is);
             }
@@ -101,7 +101,7 @@ public final class MessageLocalization {
                 return null;
             }
 
-            is = StreamUtil.getResourceStream("com/itextpdf/text/l10n/error/" + file, (new MessageLocalization()).getClass().getClassLoader());
+            is = StreamUtil.getResourceStream("esign/text/l10n/error/" + file, (new MessageLocalization()).getClass().getClassLoader());
             if (is != null) {
                 return readLanguageStream(is);
             }

@@ -791,12 +791,17 @@ public final class eSignImplimentation {
                             returnDocuments.add(returnDocument);
                             count++;
                         } catch (Exception e) {
-                            LOGGER.log(java.util.logging.Level.WARNING, "Unable to generate appearance (inner)", e);
+                            LOGGER.log(java.util.logging.Level.WARNING,
+                                "Unable to generate appearance for doc[" + count + "] docInfo=" + input.getDocInfo()
+                                + " appearanceType=" + input.getAppearanceType()
+                                + " txn=" + transactionID, e);
                             ReturnDocument returnDocument = new ReturnDocument(0, "Unable to generate appreance - " + e, "ESS-108", 0);
                             returnDocuments.add(returnDocument);
                         }
                     } catch (Exception e) {
-                        LOGGER.log(java.util.logging.Level.WARNING, "Unable to generate appearance (outer)", e);
+                        LOGGER.log(java.util.logging.Level.WARNING,
+                            "Unable to process document doc[" + count + "] docInfo=" + input.getDocInfo()
+                            + " txn=" + transactionID, e);
                         ReturnDocument returnDocument = new ReturnDocument(0, "Unable to generate appreance - " + e, "ESS-108", 0);
                         returnDocuments.add(returnDocument);
                     }
@@ -949,6 +954,7 @@ public final class eSignImplimentation {
             try {
                 preSignedBytes = Files.readAllBytes(tempfile.toPath());
             } catch (Exception e) {
+                LOGGER.log(java.util.logging.Level.WARNING, "Unable to read temp file: " + tempFilePath, e);
                 serviceReturnObj.setPreSignedTempFile(tempFilePath);
                 serviceReturnObj.setResponseXML(responseXML);
                 serviceReturnObj.setErrorCode("ESS-108");
@@ -1044,6 +1050,7 @@ public final class eSignImplimentation {
                             }
                             docsToReturn.add(returnDocument);
                         } catch (Exception e) {
+                            LOGGER.log(java.util.logging.Level.WARNING, "Unable to append signature to document id: " + docId, e);
                             docsToReturn.add(new ReturnDocument(0, "ESS-112", "Unable to get Append signature to document", docId));
                             continue;
                         }
@@ -1337,6 +1344,7 @@ public final class eSignImplimentation {
             try {
                 responseXML = HttpsConnection.excutePostHttpsXml(eSignSettings.getESIGNStatusURL(), URLEncodedsignedRequestXML, proxyIp, proxyPort, proxyreq, transactionId);
             } catch (Exception e) {
+                LOGGER.log(java.util.logging.Level.WARNING, "Unable to call eSign status URL for txn: " + transactionId, e);
                 serviceReturnObj.setRequestXML(signedRequestXML);
                 serviceReturnObj.setResponseXML(responseXML);
                 serviceReturnObj.setErrorCode("ESS-103");
@@ -1526,7 +1534,7 @@ public final class eSignImplimentation {
 
             resp.setStatus(1);
         } catch (Exception e) {
-            LOGGER.warning(e.getLocalizedMessage());
+            LOGGER.log(java.util.logging.Level.WARNING, "Exception in isValidPdf", e);
             resp.setErrorMessage("Something went wrong : " + e.getMessage());
         }
         return resp;
@@ -1552,6 +1560,7 @@ public final class eSignImplimentation {
             try {
                 responseXML = HttpsConnection.excutePostHttpsXml(BankKYCURL, URLEncodedsignedRequestXML, proxyIp, proxyPort, proxyreq, transactionID);
             } catch (Exception e) {
+                LOGGER.log(java.util.logging.Level.WARNING, "Unable to call BankKYC URL for txn: " + transactionID, e);
                 serviceReturnObj.setErrorCode("ESS-103");
                 serviceReturnObj.setErrorMessage("Unable to call eSign Url");
                 return serviceReturnObj;
