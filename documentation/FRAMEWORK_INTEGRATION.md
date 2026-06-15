@@ -11,6 +11,7 @@ This guide shows how to integrate the eSign Java SDK into common Java web framew
 - [JSP](#jsp)
 - [Struts](#struts)
 - [Plain Java (Console)](#plain-java-console)
+- [Encrypted Aadhaar Flow — Spring Boot Example](#encrypted-aadhaar-flow--spring-boot-example)
 - [Common Patterns](#common-patterns)
 
 ---
@@ -961,3 +962,210 @@ eSignInput input = eSignInputBuilder.init()
     // ... other settings
     .build();
 ```
+
+---
+
+## Encrypted Aadhaar Flow — Spring Boot Example
+
+This example shows how to integrate the Encrypted Aadhaar flow into a Spring Boot application. In this flow the signer's Aadhaar number is encrypted by the SDK and sent pre-filled to the gateway — the user only needs to authenticate (OTP/Fingerprint/IRIS), not type their Aadhaar.
+
+> See [Encrypted Aadhaar Flow](QUICK_START.md#encrypted-aadhaar-flow) in QUICK_START.md for a full concept explanation.
+
+### application.properties additions
+
+```properties
+# Path to UIDAI public-key CER file, or supply as base64 in code
+esign.uidai-cer-path=/path/to/uidai-public.cer
+```
+
+### Controller
+
+```java
+import com.emudhra.esign.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.*;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpSession;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.UUID;
+
+@Controller
+@RequestMapping("/esign/encrypted-aadhaar")
+public class EncryptedAadhaarSignController {
+
+    @Autowired
+    private eSign esignObj;
+
+    @Value("${esign.temp-folder}")
+    private String tempFolder;
+
+    @Value("${esign.emudhra-aadhaar-url}")
+    private String aadhaarGatewayUrl;
+
+    @Value("${esign.uidai-cer-path}")
+    private String uidaiCerPath;
+
+    /**
+     * Phase 1: build the encrypted Aadhaar request and redirect to eMudhra gateway.
+     *
+     * The caller must supply the signer's Aadhaar number (from a prior KYC step)
+     * and the base64-encoded PDF to sign.
+     */
+    @PostMapping("/initiate")
+    public String initiate(
+            @RequestParam("aadhaarNumber") String aadhaarNumber,
+            @RequestParam("pdfBase64") String pdfBase64,
+            HttpSession session,
+            org.springframework.ui.Model model) {
+
+        // Configure the encrypted Aadhaar details
+        EncryptedAadhaarConfig aadhaarConfig = new EncryptedAadhaarConfig();
+        aadhaarConfig.setAadhaarNumber(aadhaarNumber);
+        aadhaarConfig.setCerFilePath(uidaiCerPath);
+
+        // Build the signing input
+        eSignInput input = eSignInputBuilder.init()
+            .setDocBase64(pdfBase64)
+            .setDocInfo("Loan Agreement")
+            .setDocURL("https://yourapp.com/docs/agreement.pdf")
+            .setSignedBy("") // gateway fills in signer name from Aadhaar record
+            .setLocation("India")
+            .setReason("Agreement Signing")
+            .setAppearanceType(eSign.AppearanceType.StandardSignature)
+            .setPageTobeSigned(eSign.PageTobeSigned.Last)
+            .setCoordinates(eSign.Coordinates.BottomRight)
+            .setCoSign(true)
+            .setEncryptedAadhaarFlowEnabled(true)    // must be true to activate encrypted flow
+            .setEncryptedAadhaarConfig(aadhaarConfig)
+            .build();
+
+        ArrayList<eSignInput> inputs = new ArrayList<>();
+        inputs.add(input); // only 1 document per transaction in this flow
+
+        String transactionId = "TXN-" + UUID.randomUUID().toString().replace("-", "").substring(0, 20);
+
+        eSignServiceReturn result = esignObj.getGatewayParameter(
+            inputs,
+            "",
+            transactionId,
+            "https://yourapp.com/esign/encrypted-aadhaar/callback",
+            "https://yourapp.com/esign/encrypted-aadhaar/redirect",
+            tempFolder,
+            eSign.eSignAPIVersion.V2,
+            eSign.AuthMode.OTP
+        );
+
+        if (result.getStatus() != 1) {
+            model.addAttribute("error", result.getErrorCode() + ": " + result.getErrorMessage());
+            return "esign-error";
+        }
+
+        // Store temp file path in session — needed when the callback arrives
+        session.setAttribute("encAadhaarTempFile", result.getPreSignedTempFile());
+        session.setAttribute("encAadhaarTxnId", result.getTransactionID());
+
+        // Redirect user to eMudhra gateway
+        model.addAttribute("gatewayUrl", aadhaarGatewayUrl);
+        model.addAttribute("gatewayParam", result.getGatewayParameter());
+        return "esign-redirect"; // renders a page with a POST form to the gateway
+    }
+
+    /**
+     * Phase 2: eMudhra POSTs the signed response here.
+     * Retrieve the signed PDF and process it.
+     */
+    @PostMapping("/callback")
+    @ResponseBody
+    public String callback(
+            @RequestParam("XML") String responseXml,
+            HttpSession session) {
+
+        String tempFilePath = (String) session.getAttribute("encAadhaarTempFile");
+        if (tempFilePath == null) {
+            return "Session expired or temp file not found.";
+        }
+
+        eSignServiceReturn signResult = esignObj.getSigedDocument(responseXml, tempFilePath);
+
+        if (signResult.getStatus() != 1) {
+            return "Signing failed: " + signResult.getErrorCode() + " - " + signResult.getErrorMessage();
+        }
+
+        ReturnDocument doc = signResult.getReturnDocuments().get(0);
+        if (doc.getStatus() != 1) {
+            return "Document error: " + doc.getErrorCode() + " - " + doc.getErrorMessage();
+        }
+
+        // doc.getSignedDocument() is Base64-encoded signed PDF
+        String signedPdfBase64 = doc.getSignedDocument();
+        // TODO: decode, save to DB or filesystem, notify user
+        session.removeAttribute("encAadhaarTempFile");
+        session.removeAttribute("encAadhaarTxnId");
+
+        return "Signing successful. Document ID: " + doc.getDocId();
+    }
+}
+```
+
+### Redirect view (Thymeleaf)
+
+The Encrypted Aadhaar flow uses field name **`XML`** (not `txnref` as in the standard Aadhaar/PAN flows).
+
+**Option A — Form POST (recommended)**
+
+`esign-redirect.html` — auto-submits a hidden form to the eMudhra gateway with field `XML`:
+
+```html
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head><title>Redirecting to eSign Gateway...</title></head>
+<body onload="document.getElementById('esignForm').submit()">
+    <p>Redirecting to eSign gateway for authentication...</p>
+    <form id="esignForm" name="esignForm" th:action="${gatewayUrl}" method="POST">
+        <input type="hidden" id="XML" name="XML" th:value="${gatewayParam}" />
+        <noscript><button type="submit">Click here if not redirected</button></noscript>
+    </form>
+</body>
+</html>
+```
+
+**Option B — URL redirect (GET)**
+
+Append the `gatewayParameter` as the `XML` query parameter. The SDK already URL-encodes it, so no extra encoding is needed:
+
+```java
+// In the controller, instead of returning a view:
+String redirectUrl = gatewayUrl + "?XML=" + result.getGatewayParameter();
+return "redirect:" + redirectUrl;
+```
+
+Or using `HttpServletResponse` directly:
+```java
+response.sendRedirect(gatewayUrl + "?XML=" + result.getGatewayParameter());
+```
+
+### Error handling for encrypted Aadhaar-specific codes
+
+```java
+if (result.getStatus() != 1) {
+    switch (result.getErrorCode()) {
+        case "ESS-130":
+            // Aadhaar number is not 12 digits or contains non-digit characters
+            model.addAttribute("error", "Invalid Aadhaar number format.");
+            break;
+        case "ESS-131":
+            // CER file path wrong, file unreadable, or not an RSA certificate
+            model.addAttribute("error", "UIDAI certificate configuration error. Contact support.");
+            break;
+        case "ESS-132":
+            // Runtime encryption failure — check server logs
+            model.addAttribute("error", "Aadhaar encryption failed. Please try again.");
+            break;
+        default:
+            model.addAttribute("error", result.getErrorCode() + ": " + result.getErrorMessage());
+    }
+    return "esign-error";
+}

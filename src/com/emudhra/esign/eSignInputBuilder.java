@@ -40,6 +40,8 @@ public class eSignInputBuilder {
     private boolean tickRequired;
     private String pdfPassword;
     private boolean showAadhaarOnSignature = false;
+    private EncryptedAadhaarConfig encryptedAadhaarConfig;
+    private boolean encryptedAadhaarFlowEnabled = false;
 
     private eSign.InputType inputType = eSign.InputType.PDF;
 
@@ -193,7 +195,40 @@ public class eSignInputBuilder {
         return this;
     }
 
+    /**
+     * Enables the Encrypted Aadhaar eSign flow for this input.
+     *
+     * <p>When set, {@code getGatewayParameter} skips the gateway API call and
+     * returns a URL-encoded XML wrapper as the {@code gatewayParameter}:
+     * <pre>
+     * &lt;eSignXML&gt;
+     *   &lt;EncryptedAadhaar txn="..."&gt;Base64(RSA-encrypted Aadhaar)&lt;/EncryptedAadhaar&gt;
+     *   &lt;Base64eSignXML&gt;Base64(signed eSign request XML)&lt;/Base64eSignXML&gt;
+     * &lt;/eSignXML&gt;
+     * </pre>
+     * Only one document is permitted per Aadhaar transaction.
+     *
+     * @param encryptedAadhaarConfig Aadhaar number + public-key certificate config
+     */
+    public eSignInputBuilder setEncryptedAadhaarConfig(EncryptedAadhaarConfig encryptedAadhaarConfig) {
+        this.encryptedAadhaarConfig = encryptedAadhaarConfig;
+        return this;
+    }
+
+    /**
+     * Explicitly enables the Encrypted Aadhaar flow. Must be set to {@code true}
+     * together with {@link #setEncryptedAadhaarConfig} for the flow to activate.
+     * Defaults to {@code false} so the flow is never triggered accidentally.
+     */
+    public eSignInputBuilder setEncryptedAadhaarFlowEnabled(boolean enabled) {
+        this.encryptedAadhaarFlowEnabled = enabled;
+        return this;
+    }
+
     public eSignInput build() {
-        return new eSignInput(this.docBase64, this.docInfo, this.docURL, this.location, this.reason, this.signedBy, this.coSign, this.pageTobeSigned, this.coordinates, this.pageNumbers, this.pageLevelCoordinates, this.appearanceText, this.docHash, this.inputType, this.rightOrigin, this.contentSearch, this.signatureFontSize, this.signatureImage, this.appearanceType, this.oneLiner, this.advanceSignature, this.coloredGraphicInputs, this.customStyle, this.borderRequired, this.tickRequired, this.pdfPassword, this.showAadhaarOnSignature);
+        eSignInput input = new eSignInput(this.docBase64, this.docInfo, this.docURL, this.location, this.reason, this.signedBy, this.coSign, this.pageTobeSigned, this.coordinates, this.pageNumbers, this.pageLevelCoordinates, this.appearanceText, this.docHash, this.inputType, this.rightOrigin, this.contentSearch, this.signatureFontSize, this.signatureImage, this.appearanceType, this.oneLiner, this.advanceSignature, this.coloredGraphicInputs, this.customStyle, this.borderRequired, this.tickRequired, this.pdfPassword, this.showAadhaarOnSignature);
+        input.setEncryptedAadhaarConfig(this.encryptedAadhaarConfig);
+        input.setEncryptedAadhaarFlowEnabled(this.encryptedAadhaarFlowEnabled);
+        return input;
     }
 }

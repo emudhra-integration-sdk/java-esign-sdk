@@ -49,7 +49,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.PublicKey;
 import java.security.Security;
+import java.security.cert.CertificateFactory;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -60,6 +62,7 @@ import java.util.Map;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.logging.Logger;
+import javax.crypto.Cipher;
 import javax.crypto.NoSuchPaddingException;
 import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathFactory;
@@ -838,6 +841,56 @@ public final class eSignImplimentation {
                 requestXML = eSignUtility.generateRequestXML(returnDocuments, signerID, eSignSettings.getASPID(), responseUrl, redirectUrl, transactionID, timeStamp, maxWaitPeriod, isLTVRequired);
             }
             String signedRequestXML = eSignUtility.signXMLAndroid(requestXML, pfxpath, password, pfxAlias);
+
+            // Encrypted Aadhaar flow: skip gateway API call, build wrapper XML instead.
+            EncryptedAadhaarConfig aadhaarConfig = null;
+            for (eSignInput inp : inputs) {
+                if (inp.isEncryptedAadhaarFlowEnabled() && inp.getEncryptedAadhaarConfig() != null) {
+                    aadhaarConfig = inp.getEncryptedAadhaarConfig();
+                    break;
+                }
+            }
+            if (aadhaarConfig != null) {
+                try {
+                    String aadhaar = aadhaarConfig.getAadhaarNumber();
+                    if (aadhaar == null || !aadhaar.matches("\\d{12}")) {
+                        serviceReturnObj.setTransactionID(transactionID);
+                        serviceReturnObj.setErrorCode("ESS-130");
+                        serviceReturnObj.setStatus(0);
+                        serviceReturnObj.setErrorMessage("Invalid Aadhaar number: must be exactly 12 digits with no spaces or separators.");
+                        return serviceReturnObj;
+                    }
+                    PublicKey publicKey = loadPublicKeyFromConfig(aadhaarConfig);
+                    String encryptedAadhaar = encryptAadhaar(aadhaar, publicKey);
+                    String base64SignedXML = new String(Base64.encode(signedRequestXML.getBytes("UTF-8")), "UTF-8");
+                    String wrapperXML = "<eSignXML>"
+                        + "<EncryptedAadhaar txn=\"" + transactionID + "\">" + encryptedAadhaar + "</EncryptedAadhaar>"
+                        + "<Base64eSignXML>" + base64SignedXML + "</Base64eSignXML>"
+                        + "</eSignXML>";
+                    String gatewayParam = URLEncoder.encode(wrapperXML, "UTF-8");
+                    serviceReturnObj.setRequestXML(signedRequestXML);
+                    serviceReturnObj.setPreSignedTempFile(tempFilePath);
+                    serviceReturnObj.setTransactionID(transactionID);
+                    serviceReturnObj.setReturnValues(returnDocuments);
+                    serviceReturnObj.setGatewayParameter(gatewayParam);
+                    serviceReturnObj.setStatus(1);
+                    return serviceReturnObj;
+                } catch (IllegalArgumentException e) {
+                    serviceReturnObj.setTransactionID(transactionID);
+                    serviceReturnObj.setErrorCode("ESS-131");
+                    serviceReturnObj.setStatus(0);
+                    serviceReturnObj.setErrorMessage(e.getMessage());
+                    return serviceReturnObj;
+                } catch (Exception e) {
+                    LOGGER.log(java.util.logging.Level.WARNING, "Aadhaar encryption failed for txn: " + transactionID, e);
+                    serviceReturnObj.setTransactionID(transactionID);
+                    serviceReturnObj.setErrorCode("ESS-132");
+                    serviceReturnObj.setStatus(0);
+                    serviceReturnObj.setErrorMessage("Aadhaar encryption failed: " + e.getMessage());
+                    return serviceReturnObj;
+                }
+            }
+
             String URLEncodedsignedRequestXML = URLEncoder.encode(signedRequestXML, "UTF-8");
             serviceReturnObj.setRequestXML(signedRequestXML);
             String responseXML = "";
@@ -917,6 +970,31 @@ public final class eSignImplimentation {
             serviceReturnObj.setErrorMessage(e.toString());
             return serviceReturnObj;
         }
+    }
+
+    private PublicKey loadPublicKeyFromConfig(EncryptedAadhaarConfig config) throws Exception {
+        byte[] cerBytes;
+        if (config.getCerFilePath() != null) {
+            cerBytes = Files.readAllBytes(new File(config.getCerFilePath()).toPath());
+        } else if (config.getCerBase64() != null) {
+            cerBytes = Base64.decode(config.getCerBase64());
+        } else {
+            throw new IllegalArgumentException("EncryptedAadhaarConfig must specify either a CER file path or base64 certificate data.");
+        }
+        CertificateFactory cf = CertificateFactory.getInstance("X.509");
+        java.security.cert.Certificate cert = cf.generateCertificate(new ByteArrayInputStream(cerBytes));
+        PublicKey key = cert.getPublicKey();
+        if (!"RSA".equals(key.getAlgorithm())) {
+            throw new IllegalArgumentException("Aadhaar public key must be RSA; found: " + key.getAlgorithm());
+        }
+        return key;
+    }
+
+    private String encryptAadhaar(String aadhaarNumber, PublicKey publicKey) throws Exception {
+        Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+        cipher.init(Cipher.ENCRYPT_MODE, publicKey);
+        byte[] encryptedBytes = cipher.doFinal(aadhaarNumber.getBytes("UTF-8"));
+        return new String(Base64.encode(encryptedBytes), "UTF-8");
     }
 
     protected eSignServiceReturn getSigedDocument(String responseXML, String tempFilePath, int SignatureContents) {
@@ -1195,11 +1273,11 @@ public final class eSignImplimentation {
                 return signedPdfBytes;
             }
 
-            // Build a shared font resource dictionary (Times-Italic Type1, /F1)
+            // Build a shared font resource dictionary (Helvetica Type1, /F1)
             PdfDictionary fontObj = new PdfDictionary();
             fontObj.put(PdfName.TYPE, PdfName.FONT);
             fontObj.put(PdfName.SUBTYPE, new PdfName("Type1"));
-            fontObj.put(PdfName.BASEFONT, new PdfName("Times-Italic"));
+            fontObj.put(PdfName.BASEFONT, new PdfName("Helvetica"));
             fontObj.put(new PdfName("Encoding"), new PdfName("WinAnsiEncoding"));
             PdfIndirectObject fontRef = stamper.getWriter().addToBody(fontObj);
 
@@ -1260,7 +1338,7 @@ public final class eSignImplimentation {
 
                 // Shrink further if any line is wider than the box using BaseFont metrics
                 try {
-                    BaseFont bf = BaseFont.createFont(BaseFont.TIMES_ITALIC, BaseFont.CP1252, BaseFont.NOT_EMBEDDED);
+                    BaseFont bf = BaseFont.createFont(BaseFont.HELVETICA, BaseFont.CP1252, BaseFont.NOT_EMBEDDED);
                     for (String line : lines) {
                         float lineWidth = bf.getWidthPoint(line, fontSize);
                         if (lineWidth > availableWidth && lineWidth > 0) {

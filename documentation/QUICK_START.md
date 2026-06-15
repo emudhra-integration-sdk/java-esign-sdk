@@ -10,6 +10,7 @@ A Java SDK for eMudhra's Aadhaar-based and PAN-based eSign service. Implements *
 - [Signing Flows](#signing-flows)
   - [Aadhaar Signing (V2 API)](#aadhaar-signing-v2-api)
   - [PAN Signing (V3 API)](#pan-signing-v3-api)
+  - [Encrypted Aadhaar Flow](#encrypted-aadhaar-flow)
 - [Signature Appearance Types](#signature-appearance-types)
 - [Page Selection and Coordinates](#page-selection-and-coordinates)
 - [Multi-Document Signing](#multi-document-signing)
@@ -298,6 +299,204 @@ if (statusResult.getStatus() == 1) {
     }
 }
 ```
+
+---
+
+## Encrypted Aadhaar Flow
+
+The **Encrypted Aadhaar Flow** is a variation of the standard Aadhaar signing flow where the signer's 12-digit Aadhaar number is encrypted by the SDK (using the UIDAI public key) and sent to the gateway pre-filled — the user does **not** need to type their Aadhaar on the gateway page.
+
+### When to use
+
+Use this flow when your application already has the user's verified Aadhaar number (for example, from a prior KYC step) and you want to pass it directly to the gateway, so the user only needs to authenticate with OTP/Fingerprint/IRIS rather than also entering their Aadhaar number.
+
+### How it differs from standard Aadhaar flow
+
+| | Standard Aadhaar Flow | Encrypted Aadhaar Flow |
+|---|---|---|
+| User enters Aadhaar on gateway? | Yes | No — pre-filled by SDK |
+| API call in Phase 1? | Yes — SDK calls eSign gateway | **No** — SDK builds wrapper XML locally |
+| `gatewayParameter` content | Response code from gateway | URL-encoded `<eSignXML>` wrapper |
+| Documents per transaction | Up to 5 | **1 only** |
+| API version | V2 | V2 |
+
+### Prerequisites
+
+- **UIDAI public key certificate** (`.cer` file or its Base64 encoding) — provided by eMudhra or obtained from UIDAI. This is the RSA public key used to encrypt the Aadhaar number.
+- The **signer's 12-digit Aadhaar number** must be available in your application at the time of calling `getGatewayParameter`.
+
+### Output — Gateway Parameter Format
+
+Instead of making an API call, `getGatewayParameter` returns the `gatewayParameter` as a **URL-encoded XML wrapper**:
+
+```xml
+<eSignXML>
+  <EncryptedAadhaar txn="your-transaction-id">
+    Base64(RSA/ECB/PKCS1-encrypted Aadhaar bytes)
+  </EncryptedAadhaar>
+  <Base64eSignXML>
+    Base64(PFX-signed eSign request XML)
+  </Base64eSignXML>
+</eSignXML>
+```
+
+This wrapper is URL-encoded and set as `result.getGatewayParameter()`. It must be sent to the gateway as a form field named **`XML`** — not `txnref` as used in the standard Aadhaar/PAN flows.
+
+### Phase 1: Build input and get gateway parameter
+
+```java
+import com.emudhra.esign.*;
+import java.io.File;
+import java.nio.file.Files;
+import java.util.ArrayList;
+
+// 1. Initialize the SDK (same as always)
+eSign esignObj = new eSign(
+    "YOUR_ASP_ID",
+    "https://esigngateway.emudhra.com/eSignRequest",
+    "https://esigngateway.emudhra.com/v2/eSignRequest",
+    "/path/to/certificate.pfx", "pfxPassword", "pfxAlias", 21000
+);
+
+// 2. Configure the encrypted Aadhaar details
+EncryptedAadhaarConfig aadhaarConfig = new EncryptedAadhaarConfig();
+aadhaarConfig.setAadhaarNumber("123456789012");        // 12-digit Aadhaar, digits only
+aadhaarConfig.setCerFilePath("/path/to/uidai-public.cer"); // path to UIDAI public key CER
+
+// Alternatively, supply the CER as Base64 (e.g. loaded from a database or config):
+// aadhaarConfig.setCerBase64(base64EncodedCerBytes);
+
+// 3. Build the signing input
+String pdfBase64 = java.util.Base64.getEncoder().encodeToString(
+    Files.readAllBytes(new File("/path/to/document.pdf").toPath())
+);
+
+eSignInput input = eSignInputBuilder.init()
+    .setDocBase64(pdfBase64)
+    .setDocInfo("Loan Agreement")
+    .setDocURL("https://yourapp.com/docs/agreement.pdf")
+    .setSignedBy("Ravi Kumar")
+    .setLocation("Bangalore")
+    .setReason("Agreement Signing")
+    .setAppearanceType(eSign.AppearanceType.StandardSignature)
+    .setPageTobeSigned(eSign.PageTobeSigned.Last)
+    .setCoordinates(eSign.Coordinates.BottomRight)
+    .setCoSign(true)
+    .setEncryptedAadhaarFlowEnabled(true)   // explicitly opt in to encrypted Aadhaar flow
+    .setEncryptedAadhaarConfig(aadhaarConfig)
+    .build();
+
+ArrayList<eSignInput> inputs = new ArrayList<>();
+inputs.add(input);  // only 1 document allowed per transaction in this flow
+
+// 4. Call getGatewayParameter — no HTTP call is made; SDK builds wrapper XML locally
+eSignServiceReturn result = esignObj.getGatewayParameter(
+    inputs,
+    "",                                     // signerID (not used in V2/Aadhaar)
+    "TXN-" + System.currentTimeMillis(),    // unique transaction ID (< 50 chars)
+    "https://yourapp.com/esign/callback",   // responseUrl (eMudhra POSTs here after signing)
+    "https://yourapp.com/esign/redirect",   // redirectUrl
+    "/tmp/esign",                           // temp folder
+    eSign.eSignAPIVersion.V2,              // must be V2 for Aadhaar
+    eSign.AuthMode.OTP
+);
+
+if (result.getStatus() == 1) {
+    String gatewayParam = result.getGatewayParameter(); // URL-encoded <eSignXML> wrapper
+    String tempFilePath = result.getPreSignedTempFile(); // save in session for Phase 2
+}
+```
+
+### Phase 2: Send to gateway
+
+The `gatewayParameter` returned from the SDK must be sent to the eMudhra gateway as a form field named **`XML`**. There are two ways to do this:
+
+---
+
+**Option A — HTML Form POST (recommended)**
+
+The browser submits the form directly to the gateway URL. The user is taken to the authentication page with Aadhaar pre-filled:
+
+```html
+<form id="esignForm" name="esignForm"
+      action="https://authenticate.sandbox.emudhra.com/AadhaareSign.jsp"
+      method="POST">
+    <input type="hidden" id="XML" name="XML" value="${gatewayParam}" />
+    <input type="submit" value="Sign with Aadhaar" />
+</form>
+```
+
+Auto-submit via JavaScript:
+```html
+<script>document.getElementById("esignForm").submit();</script>
+```
+
+---
+
+**Option B — URL redirect (GET)**
+
+Append the `gatewayParameter` as the `XML` query parameter in the redirect URL:
+
+```
+https://authenticate.sandbox.emudhra.com/AadhaareSign.jsp?XML=<gatewayParam>
+```
+
+Java example:
+```java
+String redirectUrl = "https://authenticate.sandbox.emudhra.com/AadhaareSign.jsp"
+    + "?XML=" + result.getGatewayParameter(); // already URL-encoded by the SDK
+response.sendRedirect(redirectUrl);
+```
+
+> **Note:** The `gatewayParameter` is already URL-encoded by the SDK, so no additional encoding is needed for Option B.
+
+---
+
+The user will see the authentication page with Aadhaar pre-filled and only needs to complete OTP / Fingerprint / IRIS authentication.
+
+### Phase 2: Handle callback and get signed document
+
+The callback handling is **identical** to the standard Aadhaar flow. eMudhra POSTs the signed response to your `responseUrl`:
+
+```java
+// In your callback endpoint handler
+String responseXML = request.getParameter("XML");
+
+eSignServiceReturn signResult = esignObj.getSigedDocument(
+    responseXML,
+    tempFilePath   // retrieved from session (stored in Phase 1)
+);
+
+if (signResult.getStatus() == 1) {
+    ReturnDocument doc = signResult.getReturnDocuments().get(0);
+    if (doc.getStatus() == 1) {
+        String signedPdfBase64 = doc.getSignedDocument();
+        byte[] signedPdf = org.emcastle.util.encoders.Base64.decode(signedPdfBase64);
+        // save or stream the signed PDF
+    }
+} else {
+    String errorCode    = signResult.getErrorCode();
+    String errorMessage = signResult.getErrorMessage();
+}
+```
+
+### Validation and error codes
+
+The SDK validates your inputs before building the wrapper XML:
+
+| Error Code | Condition | Fix |
+|---|---|---|
+| `ESS-130` | Aadhaar number is not exactly 12 digits, contains spaces or non-digit characters | Pass a 12-digit string with digits only |
+| `ESS-131` | CER file cannot be read, is not a valid X.509 certificate, or the key is not RSA | Verify the CER file path/content; ensure it is the UIDAI RSA public key |
+| `ESS-132` | Encryption failed at runtime (e.g., key size mismatch, unsupported provider) | Check the CER file is the correct UIDAI public key |
+
+### Important notes
+
+- Only **one document** is permitted per transaction in the Encrypted Aadhaar flow. Passing more than one input will result in an error at the gateway level.
+- Must use **V2 API** (`eSign.eSignAPIVersion.V2`). The encrypted Aadhaar flow is not supported with V3/PAN.
+- Both `setEncryptedAadhaarFlowEnabled(true)` **and** `setEncryptedAadhaarConfig(...)` must be set. Setting only the config without enabling the flag leaves the SDK in the standard flow.
+- The Aadhaar number is encrypted using **RSA/ECB/PKCS1Padding** with the UIDAI-provided X.509 certificate's public key — the same algorithm used by the UIDAI decryption service.
+- The `getPreSignedTempFile()` path must still be persisted in your session and passed to `getSigedDocument()` in Phase 2, exactly as in the standard flow.
 
 ---
 
@@ -920,7 +1119,32 @@ Builder for creating `eSignInput` objects. Start with `eSignInputBuilder.init()`
 | `setTickRequired(boolean)` | boolean | Show tick mark on signature |
 | `setPdfPassword(String)` | String | Password for encrypted PDFs |
 | `setShowAadhaarOnSignature(boolean)` | boolean | When `true`, patches the signature appearance after signing to display the signer name and masked Aadhaar number extracted from the gateway certificate. Font size is auto-fitted to the signature box. Default: `false`. |
+| `setEncryptedAadhaarFlowEnabled(boolean)` | boolean | Opt in to the Encrypted Aadhaar flow. Must be `true` for the encrypted flow to activate. Default: `false`. See [Encrypted Aadhaar Flow](#encrypted-aadhaar-flow). |
+| `setEncryptedAadhaarConfig(EncryptedAadhaarConfig)` | EncryptedAadhaarConfig | Aadhaar number and UIDAI public-key certificate for the Encrypted Aadhaar flow. Has no effect unless `setEncryptedAadhaarFlowEnabled(true)` is also set. |
 | `build()` | eSignInput | Build the final input object |
+
+---
+
+### EncryptedAadhaarConfig
+
+Configuration object for the [Encrypted Aadhaar Flow](#encrypted-aadhaar-flow). Create an instance, set the required fields, and pass it to `eSignInputBuilder.setEncryptedAadhaarConfig()`.
+
+```java
+EncryptedAadhaarConfig cfg = new EncryptedAadhaarConfig();
+cfg.setAadhaarNumber("123456789012");
+cfg.setCerFilePath("/path/to/uidai-public.cer");
+// OR
+cfg.setCerBase64(base64EncodedCerBytes);
+```
+
+| Method | Type | Description |
+|--------|------|-------------|
+| `setAadhaarNumber(String)` | String | 12-digit Aadhaar number. Digits only — no spaces, hyphens, or other separators. |
+| `setCerFilePath(String)` | String | Absolute or relative path to the UIDAI public-key CER file. Use this **or** `setCerBase64()`, not both. |
+| `setCerBase64(String)` | String | Base64 encoding of the raw CER file bytes (DER or PEM format). Use this **or** `setCerFilePath()`, not both. |
+| `getAadhaarNumber()` | String | Returns the configured Aadhaar number. |
+| `getCerFilePath()` | String | Returns the CER file path, or `null` if base64 was set. |
+| `getCerBase64()` | String | Returns the Base64 CER string, or `null` if a file path was set. |
 
 ---
 
@@ -1088,6 +1312,9 @@ Per-document result contained in `eSignServiceReturn.getReturnDocuments()`.
 | `ESS-121` | Invalid ContentSearch parameters: height, width, offset, or position. |
 | `ESS-122` | Invalid font size. |
 | `ESS-126` | Signature image cannot be empty (required for SignatureImage appearance). |
+| `ESS-130` | Invalid Aadhaar number (Encrypted Aadhaar flow). Must be exactly 12 digits with no spaces or separators. |
+| `ESS-131` | Invalid certificate (Encrypted Aadhaar flow). CER file not found, not a valid X.509 certificate, or the public key is not RSA. |
+| `ESS-132` | Aadhaar encryption failed at runtime (Encrypted Aadhaar flow). Check logs for details. |
 | `ESS-999` | Generic/unexpected error. Check `getErrorMessage()` for details. |
 
 ---

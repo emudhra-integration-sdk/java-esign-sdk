@@ -42,6 +42,8 @@ public final class eSignInput {
     private ColoredGraphicInputs coloredGraphicInputs;
     private String pdfPassword;
     private boolean showAadhaarOnSignature;
+    private EncryptedAadhaarConfig encryptedAadhaarConfig;
+    private boolean encryptedAadhaarFlowEnabled = false;
 
     public String getPdfPassword() {
         return pdfPassword;
@@ -49,6 +51,22 @@ public final class eSignInput {
 
     public boolean isShowAadhaarOnSignature() {
         return showAadhaarOnSignature;
+    }
+
+    public EncryptedAadhaarConfig getEncryptedAadhaarConfig() {
+        return encryptedAadhaarConfig;
+    }
+
+    void setEncryptedAadhaarConfig(EncryptedAadhaarConfig encryptedAadhaarConfig) {
+        this.encryptedAadhaarConfig = encryptedAadhaarConfig;
+    }
+
+    public boolean isEncryptedAadhaarFlowEnabled() {
+        return encryptedAadhaarFlowEnabled;
+    }
+
+    void setEncryptedAadhaarFlowEnabled(boolean encryptedAadhaarFlowEnabled) {
+        this.encryptedAadhaarFlowEnabled = encryptedAadhaarFlowEnabled;
     }
 
     public boolean isBorderRequired() {
