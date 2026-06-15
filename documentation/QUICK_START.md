@@ -156,7 +156,9 @@ if (signResult.getStatus() == 1) {
 
 ### Aadhaar Signing (V2 API)
 
-Uses Aadhaar-based authentication. The user is redirected to eMudhra's eSign gateway where they enter their Aadhaar number and authenticate using OTP, Fingerprint, or IRIS. After the user clicks **"Perform eSign"**, eMudhra POSTs the signed response back to your `responseUrl` and the user is redirected to your `redirectUrl`.
+Uses Aadhaar-based authentication. The user is redirected to eMudhra's eSign gateway where they enter their Aadhaar number and authenticate using OTP, Fingerprint, or IRIS.
+
+> **Document limit:** Only **one document** is permitted per transaction for Aadhaar-based signing (V2). This is a gateway-level restriction. After the user clicks **"Perform eSign"**, eMudhra POSTs the signed response back to your `responseUrl` and the user is redirected to your `redirectUrl`.
 
 #### Gateway Authentication Screens
 
@@ -317,7 +319,7 @@ Use this flow when your application already has the user's verified Aadhaar numb
 | User enters Aadhaar on gateway? | Yes | No — pre-filled by SDK |
 | API call in Phase 1? | Yes — SDK calls eSign gateway | **No** — SDK builds wrapper XML locally |
 | `gatewayParameter` content | Response code from gateway | URL-encoded `<eSignXML>` wrapper |
-| Documents per transaction | Up to 5 | **1 only** |
+| Documents per transaction | **1 only** | **1 only** |
 | API version | V2 | V2 |
 
 ### Prerequisites
@@ -492,7 +494,7 @@ The SDK validates your inputs before building the wrapper XML:
 
 ### Important notes
 
-- Only **one document** is permitted per transaction in the Encrypted Aadhaar flow. Passing more than one input will result in an error at the gateway level.
+- Only **one document** is permitted per transaction for all Aadhaar-based signing (both standard and encrypted). This is a gateway-level restriction for V2/Aadhaar.
 - Must use **V2 API** (`eSign.eSignAPIVersion.V2`). The encrypted Aadhaar flow is not supported with V3/PAN.
 - Both `setEncryptedAadhaarFlowEnabled(true)` **and** `setEncryptedAadhaarConfig(...)` must be set. Setting only the config without enabling the flag leaves the SDK in the standard flow.
 - The Aadhaar number is encrypted using **RSA/ECB/PKCS1Padding** with the UIDAI-provided X.509 certificate's public key — the same algorithm used by the UIDAI decryption service.
@@ -747,7 +749,9 @@ eSignInput input = eSignInputBuilder.init()
 
 ## Multi-Document Signing
 
-Sign up to **5 documents** in a single request:
+> **Aadhaar (V2) supports only 1 document per transaction.** Multi-document signing applies to **PAN-based (V3)** signing only.
+
+Sign up to **5 documents** in a single V3/PAN request:
 
 ```java
 eSignInput input1 = eSignInputBuilder.init()
@@ -779,9 +783,9 @@ inputs.add(input1);
 inputs.add(input2);
 
 eSignServiceReturn result = esignObj.getGatewayParameter(
-    inputs, "", transactionID,
-    responseUrl, redirectUrl, tempFolder,
-    eSign.eSignAPIVersion.V2, eSign.AuthMode.OTP  // V2 for Aadhaar
+    inputs, signerID, transactionID,
+    "", redirectUrl, tempFolder,
+    eSign.eSignAPIVersion.V3, eSign.AuthMode.OTP  // V3 for PAN (supports multiple documents)
 );
 
 // After callback, each document's result is in the returnDocuments list
@@ -793,7 +797,7 @@ if (signResult.getStatus() == 1) {
 }
 ```
 
-> **Limit:** Minimum 1, maximum 5 documents per signing request (error `ESS-100` if violated).
+> **Limits:** V3/PAN — minimum 1, maximum 5 documents per request (error `ESS-100` if violated). V2/Aadhaar — exactly 1 document per request (gateway restriction).
 
 ---
 
