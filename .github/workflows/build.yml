@@ -5,6 +5,7 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -21,11 +22,30 @@ jobs:
           distribution: 'temurin'
 
       - name: Build with Ant
-        # Four JARs in project.properties have hardcoded Windows paths.
-        # Override them here so the Linux runner uses the lib/ copies instead.
         run: |
           ant clean jar \
             -Dfile.reference.batik-all-1.13.jar=lib/batik-all-1.13.jar \
             -Dfile.reference.commons-io-2.4.jar=lib/commons-io-2.4.jar \
             -Dfile.reference.org.w3c.dom.svg-1.1.0.jar=lib/org.w3c.dom.svg-1.1.0.jar \
             -Dfile.reference.xmlgraphics-commons-2.4.jar=lib/xmlgraphics-commons-2.4.jar
+
+      - name: Upload JAR as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eSignASPLibrary5_5
+          path: dist/eSignASPLibrary5_5.jar
+          retention-days: 90
+
+      - name: Read version
+        if: github.event_name == 'workflow_dispatch'
+        id: version
+        run: echo "value=v$(cat version.txt | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        if: github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.value }}
+          name: eSign SDK ${{ steps.version.outputs.value }}
+          files: dist/eSignASPLibrary5_5.jar
+          generate_release_notes: true
