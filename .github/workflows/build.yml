@@ -5,7 +5,6 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:
 
 jobs:
   build:
@@ -37,12 +36,12 @@ jobs:
           retention-days: 90
 
       - name: Read version
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'push'
         id: version
         run: echo "value=v$(cat version.txt | tr -d '[:space:]')" >> $GITHUB_OUTPUT
 
-      - name: Create GitHub Release
-        if: github.event_name == 'workflow_dispatch'
+      - name: Publish to GitHub Releases
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.value }}
