@@ -43,13 +43,11 @@ public class DigitalSignerNew {
     private final X509Certificate certificate;
 
     static {
-        // Initialize the XML Security library
         try {
+            System.setProperty("org.apache.xml.security.ignoreLineBreaks", "true");
             Init.init();
         } catch (Exception ex) {
-
         }
-
     }
 
     public DigitalSignerNew(String keyStoreFile, char[] keyStorePassword, String alias) throws Exception {

@@ -169,7 +169,7 @@ public final class eSignInput {
 
     protected void pageLevelCoordinates(String pageLevelCoordinates) {
         this.pageLevelCoordinates = pageLevelCoordinates;
-//        this.pageTobeSigned = Page.PAGE_LEVEL;
+//        this.pageTobeSigned = PageTobeSigned.PageLevel;
     }
 
     /**

@@ -227,20 +227,23 @@ public final class eSignImplimentation {
                                 if (input.getContentSearch() != null) {
                                     //validation for content search
                                     if (input.getContentSearch().getHeight() <= 0) {
-                                        if (eSignUtility.isNullOrEmpty(cordinate)) {
-                                            serviceReturnObj.setErrorCode("ESS-121");
-                                            serviceReturnObj.setErrorMessage("Invalid height");
-                                            return serviceReturnObj;
-                                        }
+                                        serviceReturnObj.setErrorCode("ESS-121");
+                                        serviceReturnObj.setErrorMessage("Invalid height");
+                                        return serviceReturnObj;
                                     }
                                     if (input.getContentSearch().getWidth() <= 0) {
                                         serviceReturnObj.setErrorCode("ESS-121");
                                         serviceReturnObj.setErrorMessage("Invalid Width");
                                         return serviceReturnObj;
                                     }
-                                    if (input.getContentSearch().getOffset() == "") {
+                                    if (eSignUtility.isNullOrEmpty(input.getContentSearch().getOffset())) {
                                         serviceReturnObj.setErrorCode("ESS-121");
                                         serviceReturnObj.setErrorMessage("Offset cannot be empty");
+                                        return serviceReturnObj;
+                                    }
+                                    if (eSignUtility.isNullOrEmpty(input.getContentSearch().getSearchText())) {
+                                        serviceReturnObj.setErrorCode("ESS-121");
+                                        serviceReturnObj.setErrorMessage("Search text cannot be empty");
                                         return serviceReturnObj;
                                     }
                                     if (input.getContentSearch().getPosition() == null) {
@@ -270,7 +273,7 @@ public final class eSignImplimentation {
                                     try {
                                         String pageLevelCoordinates = input.getPageLevelCoordinates();
                                         if (Page.toString().equalsIgnoreCase("pagelevel")) {
-                                            pageLevelCoordinates = reformatPagelevelCoordinates(pageLevelCoordinates, reader.getNumberOfPages());
+                                            pageLevelCoordinates = reformatPagelevelCoordinates(pageLevelCoordinates, reader.getNumberOfPages());     
                                             input.pageLevelCoordinates(eSignUtility.validatePageLevelCordinate(pageLevelCoordinates, false, reader));
                                         }
                                     } catch (Exception ex) {
@@ -539,6 +542,9 @@ public final class eSignImplimentation {
                                 int[] pages = null;
                                 ArrayList<Integer> ar;
                                 String coord = null;
+                                if (Page == null) {
+                                    Page = eSign.PageTobeSigned.PageLevel;
+                                }
                                 switch (Page) {
                                     case First: {
                                         pages = new int[1];
@@ -598,6 +604,9 @@ public final class eSignImplimentation {
                                             pages[j] = Integer.parseInt(Pagelevel[j]);
                                         }
                                         break;
+                                    case PageLevel:
+                                        // pages[] is allocated below after parsing pageLevelCoordinates
+                                        break;
                                     default:
                                         break;
                                 }
@@ -642,7 +651,14 @@ public final class eSignImplimentation {
                                     String pageLevelCoordinates = input.getPageLevelCoordinates();
                                     pageLevelCoordinates = reformatPagelevelCoordinates(pageLevelCoordinates, reader.getNumberOfPages());
                                     String[] pl = pageLevelCoordinates.split(";");
-                                    pages = new int[pl.length];
+
+                                    // Count valid (non-empty) entries so pages[] has no zero-filled
+                                    // tail slots — page 0 is invalid in iText and causes "page empty".
+                                    int validCount = 0;
+                                    for (String s : pl) {
+                                        if (!s.trim().isEmpty()) validCount++;
+                                    }
+                                    pages = new int[validCount];
                                     int y = 0;
 
                                     for (String pl1 : pl) {
@@ -682,7 +698,12 @@ public final class eSignImplimentation {
                                         rect = new Rectangle(x11, y1, x2, y2);
                                         rList.add(rect);
                                         y++;
-                                        appearance.setVisibleSignature(rect, pages, null, rList);
+                                    }
+                                    // Call once after pages[] and rList are fully populated.
+                                    // Calling inside the loop passes a partially-filled pages[] whose
+                                    // unfilled slots default to 0 — an invalid iText page number.
+                                    if (!rList.isEmpty()) {
+                                        appearance.setVisibleSignature(rList.get(0), pages, null, rList);
                                     }
                                 } else {
                                     String[] numbers1;
@@ -782,8 +803,7 @@ public final class eSignImplimentation {
                                 preSignedPdf = org.emcastle.util.encoders.Base64.toBase64String(preSignedPdf.getBytes("utf-8"));
                                 InputStream is1 = appearance.getRangeStream();
                                 byte[] data = IOUtils.toByteArray(is1);
-                                Security.addProvider(new emCastleProvider());
-                                MessageDigest digest = MessageDigest.getInstance("SHA256", "EM");
+                                MessageDigest digest = MessageDigest.getInstance("SHA-256");
                                 digest.update(data);
                                 byte[] hash = digest.digest();
                                 String hashData = new String(Base64.encode(hash));
@@ -1605,8 +1625,7 @@ public final class eSignImplimentation {
 
             InputStream is1 = appearance.getRangeStream();
             byte[] data = IOUtils.toByteArray(is1);
-            Security.addProvider(new emCastleProvider());
-            MessageDigest digest = MessageDigest.getInstance("SHA256", "EM");
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
             digest.update(data);
             byte[] hash = digest.digest();
 
