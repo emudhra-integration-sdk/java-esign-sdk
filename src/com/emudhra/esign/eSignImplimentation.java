@@ -28,6 +28,7 @@ import esign.text.pdf.AcroFields;
 import esign.text.pdf.PdfArray;
 import esign.text.pdf.PdfIndirectObject;
 import esign.text.pdf.PRStream;
+import esign.text.pdf.PdfBoolean;
 import esign.text.pdf.PdfTemplate;
 import esign.text.pdf.SignatureAppearanceCreator;
 import org.emcastle.asn1.x500.RDN;
@@ -283,11 +284,11 @@ public final class eSignImplimentation {
                                     }
                                 }
 
-                                if (eSignUtility.isNullOrEmpty(input.getPageLevelCoordinates())) {
-                                    serviceReturnObj.setErrorCode("ESS-120");
-                                    serviceReturnObj.setErrorMessage("Unable to find content");
-                                    return serviceReturnObj;
-                                }
+//                                if (eSignUtility.isNullOrEmpty(input.getPageLevelCoordinates())) {
+//                                    serviceReturnObj.setErrorCode("ESS-120");
+//                                    serviceReturnObj.setErrorMessage("Unable to find content");
+//                                    return serviceReturnObj;
+//                                }
 
                                 if (reader.isRebuilt()) {
                                     reader.enableRebuild();
@@ -301,6 +302,8 @@ public final class eSignImplimentation {
                                 PdfSignatureAppearance appearance = stamper.getSignatureAppearance();
                                 StringBuilder layer2text = new StringBuilder();
                                 Font font = new Font(Font.FontFamily.HELVETICA, input.getSignatureFontSize(), Font.NORMAL);
+                                List<String> textLayerLines = null;
+                                float textLayerFontSize = 0f;
 
                                 if (input.getCustomStyle() != null) {
 
@@ -316,36 +319,8 @@ public final class eSignImplimentation {
                                             String signedByName = input.getSignedBy();
                                             appearance.setSignDate(cal);
                                             appearance.setSignerName(input.getSignedBy());
-
                                             appearance.setReason(input.getReason());
                                             appearance.setLocation(input.getLocation());
-
-                                            StringBuilder sb = new StringBuilder();
-                                            if (!eSignUtility.isNullOrEmpty(input.getAppearanceText())) {
-                                                sb.append(input.getAppearanceText());
-                                                sb.append("\n");
-                                                sb.toString();
-                                            } else {
-                                                if (!eSignUtility.isNullOrEmpty(signedByName)) {
-                                                    sb.append("Signed by: ");
-                                                    sb.append(signedByName);
-                                                    sb.append("\n");
-                                                }
-                                                if (!eSignUtility.isNullOrEmpty(appearance.getReason())) {
-                                                    sb.append("Reason: ");
-                                                    sb.append(appearance.getReason());
-                                                    sb.append("\n");
-                                                }
-                                                if (!eSignUtility.isNullOrEmpty(appearance.getLocation())) {
-                                                    sb.append("Location: ");
-                                                    sb.append(appearance.getLocation());
-                                                    sb.append("\n");
-                                                }
-                                                sb.append("Date: ");
-                                                sb.append(timeStamp.replace('T', ' '));
-                                                sb.append("\n");
-                                            }
-                                            appearance.setLayer2Text(sb.toString());
 
                                             if (input.getSignatureFontSize() < -1) {
                                                 serviceReturnObj.setErrorCode("ESS-122");
@@ -353,18 +328,37 @@ public final class eSignImplimentation {
                                                 return serviceReturnObj;
                                             }
 
-                                            if (input.getSignatureFontSize() != -1) {
-                                                Font font1 = new Font(Font.FontFamily.HELVETICA, input.getSignatureFontSize(), Font.NORMAL);
-                                                appearance.setLayer2Font(font1);
+                                            textLayerLines = new ArrayList<>();
+                                            if (!eSignUtility.isNullOrEmpty(input.getAppearanceText())) {
+                                                for (String l : input.getAppearanceText().split("\n", -1)) {
+                                                    if (!l.isEmpty()) textLayerLines.add(l);
+                                                }
+                                            } else {
+                                                if (!eSignUtility.isNullOrEmpty(signedByName))
+                                                    textLayerLines.add("Signed by: " + signedByName);
+                                                if (!eSignUtility.isNullOrEmpty(appearance.getReason()))
+                                                    textLayerLines.add("Reason: " + appearance.getReason());
+                                                if (!eSignUtility.isNullOrEmpty(appearance.getLocation()))
+                                                    textLayerLines.add("Location: " + appearance.getLocation());
+                                                textLayerLines.add("Date: " + timeStamp.replace('T', ' '));
                                             }
+                                            textLayerFontSize = input.getSignatureFontSize() > 0
+                                                    ? (float) input.getSignatureFontSize() : 0f;
+                                            appearance.setRenderingMode(PdfSignatureAppearance.RenderingMode.DESCRIPTION);
 //                                            appearance.setAcro6Layers(false);
                                             appearance.setAcro6Layers(!(input.isTickRequired()));
                                             appearance.setCertificationLevel(PdfSignatureAppearance.NOT_CERTIFIED);
                                             break;
 
                                         case OneLiner:
-                                            appearance.setLayer2Font(font);
-                                            appearance.setLayer2Text(input.getOneLiner());
+                                            textLayerLines = new ArrayList<>();
+                                            if (input.getOneLiner() != null) {
+                                                for (String l : input.getOneLiner().split("\n", -1)) {
+                                                    if (!l.isEmpty()) textLayerLines.add(l);
+                                                }
+                                            }
+                                            textLayerFontSize = input.getSignatureFontSize() > 0
+                                                    ? (float) input.getSignatureFontSize() : 0f;
                                             appearance.setRenderingMode(PdfSignatureAppearance.RenderingMode.DESCRIPTION);
                                             appearance.setCertificationLevel(PdfSignatureAppearance.NOT_CERTIFIED);
                                             break;
@@ -747,6 +741,15 @@ public final class eSignImplimentation {
                                 }
                                 appearance.setCryptoDictionary(dic);
 
+                                // Draw text at specified position (StandardSignature / OneLiner).
+                                // Must happen AFTER setVisibleSignature so the layer bounding box is set.
+                                // Calling getLayer(2) here pre-initialises app[2], causing getAppearance()
+                                // to skip its own layer2 rendering and leave only our content.
+                                if (textLayerLines != null && !textLayerLines.isEmpty()) {
+                                    drawTextOnLayer2(appearance.getLayer(2), textLayerLines,
+                                            input.getTextContentPosition(), textLayerFontSize);
+                                }
+
                                 //Signature Border
                                 if (input.getAppearanceType() == eSign.AppearanceType.ColoredGraphic) {
                                     appearance.getAppearance(1);
@@ -810,7 +813,7 @@ public final class eSignImplimentation {
                                 byte[] hashdata = Base64.decode(hashData);
                                 hexHashDocument = Hex.toHexString(hashdata);
                             }
-                            ReturnDocument returnDocument = new ReturnDocument("", count, input.getDocInfo(), input.getDocURL(), hexHashDocument, preSignedPdf, eSign.InputType.PDF, input.isShowAadhaarOnSignature());
+                            ReturnDocument returnDocument = new ReturnDocument("", count, input.getDocInfo(), input.getDocURL(), hexHashDocument, preSignedPdf, eSign.InputType.PDF, input.isShowAadhaarOnSignature(), input.getTextContentPosition());
                             returnDocuments.add(returnDocument);
                             count++;
                         } catch (Exception e) {
@@ -1140,7 +1143,7 @@ public final class eSignImplimentation {
                             } else {
                                 byte[] array = signClose(PKCS7ResponseBase64, returnDocument.getPreSignedDocument(), SignatureContents);
                                 if (returnDocument.isShowAadhaarOnSignature()) {
-                                    array = patchSignatureAppearance(array, userX509CertBase64);
+                                    array = patchSignatureAppearance(array, userX509CertBase64, returnDocument.getTextContentPosition());
                                 }
                                 String pdfBase64 = java.util.Base64.getEncoder().encodeToString(array);
                                 returnDocument.setSignedDocument(pdfBase64);
@@ -1241,6 +1244,73 @@ public final class eSignImplimentation {
     }
 
     /**
+     * Draws text lines directly on a signature layer2 PdfTemplate at the position
+     * specified by contentPosition within the signature box.
+     */
+    private static void drawTextOnLayer2(PdfTemplate layer2, List<String> lines,
+            eSign.Coordinates contentPosition, float explicitFontSize) throws Exception {
+        if (lines == null || lines.isEmpty()) return;
+        if (contentPosition == null) contentPosition = eSign.Coordinates.TopLeft;
+
+        float w = layer2.getWidth();
+        float h = layer2.getHeight();
+        final float lm = 4f, rm = 4f, tm = 3f, bm = 3f;
+        float aw = w - lm - rm, ah = h - tm - bm;
+        int n = lines.size();
+
+        BaseFont bf = BaseFont.createFont(BaseFont.HELVETICA, BaseFont.CP1252, BaseFont.NOT_EMBEDDED);
+
+        float fontSize;
+        if (explicitFontSize > 0) {
+            fontSize = explicitFontSize;
+        } else {
+            fontSize = n > 0 ? ah / n : 8f;
+            for (String line : lines) {
+                float lw = bf.getWidthPoint(line, fontSize);
+                if (lw > aw && lw > 0) fontSize = Math.min(fontSize, fontSize * aw / lw);
+            }
+            fontSize = Math.max(4f, Math.min(fontSize, 10f));
+        }
+        float leading = fontSize;
+
+        float maxLW = 0f;
+        for (String line : lines) maxLW = Math.max(maxLW, bf.getWidthPoint(line, fontSize));
+        if (maxLW == 0f) maxLW = aw;
+
+        float startY;
+        switch (contentPosition) {
+            case BottomLeft: case BottomMiddle: case BottomRight:
+                startY = bm + (n - 1) * leading;
+                break;
+            case CenterLeft: case CenterMiddle: case CenterRight:
+                startY = (h + fontSize * (n - 2)) / 2f;
+                break;
+            default:
+                startY = h - tm - fontSize;
+        }
+
+        float startX;
+        switch (contentPosition) {
+            case TopMiddle: case CenterMiddle: case BottomMiddle:
+                startX = Math.max(lm, (w - maxLW) / 2f);
+                break;
+            case TopRight: case CenterRight: case BottomRight:
+                startX = Math.max(lm, w - rm - maxLW);
+                break;
+            default:
+                startX = lm;
+        }
+
+        layer2.beginText();
+        layer2.setFontAndSize(bf, fontSize);
+        for (int i = 0; i < n; i++) {
+            layer2.setTextMatrix(1f, 0f, 0f, 1f, startX, startY - i * leading);
+            layer2.showText(lines.get(i));
+        }
+        layer2.endText();
+    }
+
+    /**
      * Patches the visual appearance of every signature field in a signed PDF
      * so that it displays signer name and masked Aadhaar number, equivalent to
      * the C# PatchSignatureAppearance method.
@@ -1248,9 +1318,10 @@ public final class eSignImplimentation {
      * @param signedPdfBytes     bytes of the fully-signed PDF
      * @param userX509CertBase64 Base64-encoded DER X.509 certificate returned
      *                           by the eSign gateway in UserX509Certificate
+     * @param contentPosition    where within each signature box the text block is anchored
      * @return patched PDF bytes (or the original bytes if anything fails)
      */
-    private static byte[] patchSignatureAppearance(byte[] signedPdfBytes, String userX509CertBase64) {
+    private static byte[] patchSignatureAppearance(byte[] signedPdfBytes, String userX509CertBase64, eSign.Coordinates contentPosition) {
         try {
             if (userX509CertBase64 == null || userX509CertBase64.trim().isEmpty())
                 return signedPdfBytes;
@@ -1305,6 +1376,13 @@ public final class eSignImplimentation {
             fontResources.put(new PdfName("F1"), fontRef.getIndirectReference());
             PdfDictionary resDict = new PdfDictionary();
             resDict.put(PdfName.FONT, fontResources);
+            // ponytail: ESP key marks already-patched appearances so re-entry skips them (avoids O(n²) on multi-signer PDFs)
+            resDict.put(new PdfName("ESP"), PdfBoolean.PDFTRUE);
+
+            BaseFont bf = null;
+            try {
+                bf = BaseFont.createFont(BaseFont.HELVETICA, BaseFont.CP1252, BaseFont.NOT_EMBEDDED);
+            } catch (Exception ignored) {}
 
             SimpleDateFormat sdf = new SimpleDateFormat("dd-MMM-yyyy HH:mm:ss");
 
@@ -1313,6 +1391,15 @@ public final class eSignImplimentation {
                 if (item == null) continue;
                 PdfDictionary widget = item.getWidget(0);
                 if (widget == null) continue;
+
+                // Skip appearances already patched by a previous signing round
+                PdfDictionary existingAp = widget.getAsDict(PdfName.AP);
+                if (existingAp != null) {
+                    PdfObject nObj = PdfReader.getPdfObject(existingAp.get(PdfName.N));
+                    if (nObj instanceof PdfDictionary && ((PdfDictionary) nObj).get(new PdfName("ESP")) != null)
+                        continue;
+                }
+
                 Rectangle rect = PdfReader.getNormalizedRectangle(widget.getAsArray(PdfName.RECT));
 
                 // Read date / reason / location from the embedded signature dictionary
@@ -1357,8 +1444,7 @@ public final class eSignImplimentation {
                 float fontSize = (lines.isEmpty()) ? 8f : availableHeight / lines.size();
 
                 // Shrink further if any line is wider than the box using BaseFont metrics
-                try {
-                    BaseFont bf = BaseFont.createFont(BaseFont.HELVETICA, BaseFont.CP1252, BaseFont.NOT_EMBEDDED);
+                if (bf != null) {
                     for (String line : lines) {
                         float lineWidth = bf.getWidthPoint(line, fontSize);
                         if (lineWidth > availableWidth && lineWidth > 0) {
@@ -1366,18 +1452,50 @@ public final class eSignImplimentation {
                             if (scaled < fontSize) fontSize = scaled;
                         }
                     }
-                } catch (Exception ignored) { }
+                }
 
                 // Clamp to a readable range
                 fontSize = Math.max(4f, Math.min(fontSize, 10f));
                 float leading = fontSize;
-                float startY = rect.getHeight() - topMargin - fontSize;
+                int n = lines.size();
+
+                // Compute max line width for horizontal centering/right-aligning
+                float maxLW = availableWidth;
+                if (bf != null) {
+                    float mw = 0f;
+                    for (String line : lines) mw = Math.max(mw, bf.getWidthPoint(line, fontSize));
+                    if (mw > 0) maxLW = mw;
+                }
+
+                float startY;
+                switch (contentPosition != null ? contentPosition : eSign.Coordinates.TopLeft) {
+                    case BottomLeft: case BottomMiddle: case BottomRight:
+                        startY = bottomMargin + (n - 1) * leading;
+                        break;
+                    case CenterLeft: case CenterMiddle: case CenterRight:
+                        startY = (rect.getHeight() + fontSize * (n - 2)) / 2f;
+                        break;
+                    default:
+                        startY = rect.getHeight() - topMargin - fontSize;
+                }
+
+                float startX;
+                switch (contentPosition != null ? contentPosition : eSign.Coordinates.TopLeft) {
+                    case TopMiddle: case CenterMiddle: case BottomMiddle:
+                        startX = Math.max(leftMargin, (rect.getWidth() - maxLW) / 2f);
+                        break;
+                    case TopRight: case CenterRight: case BottomRight:
+                        startX = Math.max(leftMargin, rect.getWidth() - rightMargin - maxLW);
+                        break;
+                    default:
+                        startX = leftMargin;
+                }
 
                 StringBuilder cs = new StringBuilder();
                 cs.append("BT\n");
                 cs.append(String.format(java.util.Locale.US, "/F1 %.2f Tf\n", fontSize));
                 cs.append("/DeviceRGB cs\n0 0 0 sc\n");
-                cs.append(String.format(java.util.Locale.US, "%.2f %.2f Td\n", leftMargin, startY));
+                cs.append(String.format(java.util.Locale.US, "%.2f %.2f Td\n", startX, startY));
                 cs.append(String.format(java.util.Locale.US, "%.2f TL\n", leading));
                 for (int li = 0; li < lines.size(); li++) {
                     String escaped = lines.get(li)

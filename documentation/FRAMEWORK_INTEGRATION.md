@@ -951,6 +951,23 @@ for (ReturnDocument doc : result.getReturnDocuments()) {
 }
 ```
 
+### Positioning Text Inside the Signature Box
+
+By default text is drawn from the top-left corner of the signature box. Use `setTextContentPosition` to change the anchor point. Works with `StandardSignature`, `OneLiner`, and the Aadhaar patch appearance:
+
+```java
+eSignInput input = eSignInputBuilder.init()
+    .setDocBase64(pdfBase64)
+    .setDocInfo("Agreement")
+    .setAppearanceType(eSign.AppearanceType.StandardSignature)
+    .setPageTobeSigned(eSign.PageTobeSigned.Last)
+    .setCoordinates(eSign.Coordinates.BottomRight)
+    .setTextContentPosition(eSign.Coordinates.BottomLeft)  // text anchored at bottom-left
+    .build();
+```
+
+Available positions: `TopLeft` (default), `TopMiddle`, `TopRight`, `CenterLeft`, `CenterMiddle`, `CenterRight`, `BottomLeft`, `BottomMiddle`, `BottomRight`. No Phase 2 changes are needed — the setting is stored in the temp file and applied automatically.
+
 ### Password-Protected PDFs
 
 If the PDF is password-protected, provide the password via the builder:

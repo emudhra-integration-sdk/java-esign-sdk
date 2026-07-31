@@ -40,6 +40,7 @@ public class eSignInputBuilder {
     private boolean tickRequired;
     private String pdfPassword;
     private boolean showAadhaarOnSignature = false;
+    private eSign.Coordinates textContentPosition = eSign.Coordinates.TopLeft;
     private EncryptedAadhaarConfig encryptedAadhaarConfig;
     private boolean encryptedAadhaarFlowEnabled = false;
 
@@ -195,6 +196,11 @@ public class eSignInputBuilder {
         return this;
     }
 
+    public eSignInputBuilder setTextContentPosition(eSign.Coordinates textContentPosition) {
+        this.textContentPosition = textContentPosition;
+        return this;
+    }
+
     /**
      * Enables the Encrypted Aadhaar eSign flow for this input.
      *
@@ -229,7 +235,7 @@ public class eSignInputBuilder {
         if (this.contentSearch != null) {
             this.pageTobeSigned = eSign.PageTobeSigned.PageLevel;
         }
-        eSignInput input = new eSignInput(this.docBase64, this.docInfo, this.docURL, this.location, this.reason, this.signedBy, this.coSign, this.pageTobeSigned, this.coordinates, this.pageNumbers, this.pageLevelCoordinates, this.appearanceText, this.docHash, this.inputType, this.rightOrigin, this.contentSearch, this.signatureFontSize, this.signatureImage, this.appearanceType, this.oneLiner, this.advanceSignature, this.coloredGraphicInputs, this.customStyle, this.borderRequired, this.tickRequired, this.pdfPassword, this.showAadhaarOnSignature);
+        eSignInput input = new eSignInput(this.docBase64, this.docInfo, this.docURL, this.location, this.reason, this.signedBy, this.coSign, this.pageTobeSigned, this.coordinates, this.pageNumbers, this.pageLevelCoordinates, this.appearanceText, this.docHash, this.inputType, this.rightOrigin, this.contentSearch, this.signatureFontSize, this.signatureImage, this.appearanceType, this.oneLiner, this.advanceSignature, this.coloredGraphicInputs, this.customStyle, this.borderRequired, this.tickRequired, this.pdfPassword, this.showAadhaarOnSignature, this.textContentPosition);
         input.setEncryptedAadhaarConfig(this.encryptedAadhaarConfig);
         input.setEncryptedAadhaarFlowEnabled(this.encryptedAadhaarFlowEnabled);
         return input;

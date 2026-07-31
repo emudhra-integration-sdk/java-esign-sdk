@@ -27,12 +27,17 @@ public final class ReturnDocument {
     private int status;
     private eSign.InputType inputType;
     private boolean showAadhaarOnSignature;
+    private eSign.Coordinates textContentPosition = eSign.Coordinates.TopLeft;
 
     protected ReturnDocument(String signedDocument, int docId, String docInfo, String docURL, String documentHash, String preSignedDocument, eSign.InputType inputType) {
-        this(signedDocument, docId, docInfo, docURL, documentHash, preSignedDocument, inputType, false);
+        this(signedDocument, docId, docInfo, docURL, documentHash, preSignedDocument, inputType, false, eSign.Coordinates.TopLeft);
     }
 
     protected ReturnDocument(String signedDocument, int docId, String docInfo, String docURL, String documentHash, String preSignedDocument, eSign.InputType inputType, boolean showAadhaarOnSignature) {
+        this(signedDocument, docId, docInfo, docURL, documentHash, preSignedDocument, inputType, showAadhaarOnSignature, eSign.Coordinates.TopLeft);
+    }
+
+    protected ReturnDocument(String signedDocument, int docId, String docInfo, String docURL, String documentHash, String preSignedDocument, eSign.InputType inputType, boolean showAadhaarOnSignature, eSign.Coordinates textContentPosition) {
         this.signedDocument = signedDocument;
         this.documentHash = documentHash;
         this.docURL = docURL;
@@ -41,15 +46,20 @@ public final class ReturnDocument {
         this.docId = docId;
         this.inputType = inputType;
         this.showAadhaarOnSignature = showAadhaarOnSignature;
+        this.textContentPosition = textContentPosition != null ? textContentPosition : eSign.Coordinates.TopLeft;
     }
 
     protected String getReturnDocumentObjBase64() throws UnsupportedEncodingException {
-        String returnDocument = Integer.toString(docId) + "|" + docInfo + "|" + docURL + "|" + documentHash + "|" + preSignedDocument + "|" + showAadhaarOnSignature;
+        String returnDocument = Integer.toString(docId) + "|" + docInfo + "|" + docURL + "|" + documentHash + "|" + preSignedDocument + "|" + showAadhaarOnSignature + "|" + textContentPosition.name();
         return org.emcastle.util.encoders.Base64.toBase64String(returnDocument.getBytes("utf-8"));
     }
 
     public boolean isShowAadhaarOnSignature() {
         return showAadhaarOnSignature;
+    }
+
+    public eSign.Coordinates getTextContentPosition() {
+        return textContentPosition != null ? textContentPosition : eSign.Coordinates.TopLeft;
     }
 
     public ReturnDocument(String returnDocumentBase64) {
@@ -62,6 +72,13 @@ public final class ReturnDocument {
             }
             if (returnDocumentValues.length >= 6) {
                 this.showAadhaarOnSignature = Boolean.parseBoolean(returnDocumentValues[5]);
+            }
+            if (returnDocumentValues.length >= 7) {
+                try {
+                    this.textContentPosition = eSign.Coordinates.valueOf(returnDocumentValues[6]);
+                } catch (IllegalArgumentException ignored) {
+                    this.textContentPosition = eSign.Coordinates.TopLeft;
+                }
             }
             int documentId = 0;
             if (eSignUtility.tryParseInt(returnDocumentValues[0])) {

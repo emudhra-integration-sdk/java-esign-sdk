@@ -869,6 +869,46 @@ The iText signature appearance configured during Phase 1 (signed-by name, reason
 
 ---
 
+## Signature Content Position
+
+`setTextContentPosition(eSign.Coordinates)` controls where text is anchored inside the signature box. It works for `StandardSignature`, `OneLiner`, and the Aadhaar patch appearance. It has no effect on image-based types (`SignatureImage`, `advanceSignature`, `ColoredGraphic`, `BackgroundImage`).
+
+### Position values
+
+| Value | Anchor |
+|---|---|
+| `TopLeft` *(default)* | top-left corner |
+| `TopMiddle` | top, horizontally centred |
+| `TopRight` | top-right corner |
+| `CenterLeft` | vertically centred, left-aligned |
+| `CenterMiddle` | vertically and horizontally centred |
+| `CenterRight` | vertically centred, right-aligned |
+| `BottomLeft` | bottom-left corner |
+| `BottomMiddle` | bottom, horizontally centred |
+| `BottomRight` | bottom-right corner |
+
+### Usage
+
+```java
+eSignInput input = eSignInputBuilder.init()
+    .setDocBase64(pdfBase64)
+    .setDocInfo("Agreement")
+    .setSignedBy("John Doe")
+    .setAppearanceType(eSign.AppearanceType.StandardSignature)
+    .setPageTobeSigned(eSign.PageTobeSigned.Last)
+    .setCoordinates(eSign.Coordinates.BottomRight)
+    .setTextContentPosition(eSign.Coordinates.BottomLeft)  // text starts at bottom-left of box
+    .build();
+```
+
+The setting is stored in the pre-sign temp file and applied automatically in Phase 2 — no Phase 2 code changes are needed.
+
+### Interaction with Aadhaar patching
+
+When `setShowAadhaarOnSignature(true)` is also set, `textContentPosition` controls where the patched Aadhaar text (name, masked number, date) is placed within each signature field.
+
+---
+
 ## API Reference
 
 ### Constructors
@@ -1123,6 +1163,7 @@ Builder for creating `eSignInput` objects. Start with `eSignInputBuilder.init()`
 | `setTickRequired(boolean)` | boolean | Show tick mark on signature |
 | `setPdfPassword(String)` | String | Password for encrypted PDFs |
 | `setShowAadhaarOnSignature(boolean)` | boolean | When `true`, patches the signature appearance after signing to display the signer name and masked Aadhaar number extracted from the gateway certificate. Font size is auto-fitted to the signature box. Default: `false`. |
+| `setTextContentPosition(Coordinates)` | Coordinates | Position of text content within the signature box. Accepts any `eSign.Coordinates` value (`TopLeft`, `TopMiddle`, `TopRight`, `CenterLeft`, `CenterMiddle`, `CenterRight`, `BottomLeft`, `BottomMiddle`, `BottomRight`). Default: `TopLeft`. Applies to `StandardSignature`, `OneLiner`, and the Aadhaar patch appearance. Has no effect on `SignatureImage`, `advanceSignature`, `ColoredGraphic`, or `BackgroundImage`. |
 | `setEncryptedAadhaarFlowEnabled(boolean)` | boolean | Opt in to the Encrypted Aadhaar flow. Must be `true` for the encrypted flow to activate. Default: `false`. See [Encrypted Aadhaar Flow](#encrypted-aadhaar-flow). |
 | `setEncryptedAadhaarConfig(EncryptedAadhaarConfig)` | EncryptedAadhaarConfig | Aadhaar number and UIDAI public-key certificate for the Encrypted Aadhaar flow. Has no effect unless `setEncryptedAadhaarFlowEnabled(true)` is also set. |
 | `build()` | eSignInput | Build the final input object |
