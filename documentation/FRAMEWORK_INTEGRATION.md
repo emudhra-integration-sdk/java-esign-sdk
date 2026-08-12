@@ -886,6 +886,70 @@ public class ESignTest {
 
 ## Common Patterns
 
+### Customising the Signature Appearance — LATEST
+
+**Added in 5.8.** Every Phase 2 example above calls the two-argument
+`getSigedDocument(responseXML, tempFile)`, which draws the SDK's default block.
+A third argument controls what the visible signature shows — the same code works
+in Spring Boot, Servlet, JSP, Struts and plain Java:
+
+```java
+AadhaarSignatureAppearance appearance = new AadhaarSignatureAppearance();
+appearance.setContentLines(Arrays.asList(
+        "E-Signed By: {name}",
+        "Date: {date}",
+        "Reason: {reason}",
+        "Location: {location}"));
+appearance.setDateFormat("dd/MM/yyyy HH:mm:ss z");
+appearance.setTimeZone("IST");
+appearance.setItalic(true);
+appearance.setShowAadhaar(false);
+
+eSignServiceReturn result =
+        esignClient.getSigedDocument(responseXML, tempFile, appearance);
+```
+```
+E-Signed By: Bavaji
+Date: 04/08/2026 14:10:26 IST
+Reason: Digital Signature
+Location: India
+```
+
+Placeholders: `{name}` (certificate CN, or `signerName` if you set one),
+`{certName}`, `{aadhaar}` (masked), `{aadhaarDigits}`, `{reason}`, `{location}`,
+`{date}`. A line whose placeholders all resolve empty is dropped, so optional
+values never leave a dangling label behind.
+
+Passing an appearance is enough to trigger appearance patching —
+`setShowAadhaarOnSignature(true)` is **not** required on the Phase 1 input. The
+two-argument overload is unchanged, so existing code keeps its current output.
+
+The appearance object is per-call and holds no static state, so build a fresh one
+per request even though `eSign` itself must be a singleton (see Thread Safety
+below). See
+[Customising the Aadhaar Appearance](QUICK_START.md#customising-the-aadhaar-appearance--latest)
+for every setting, structured mode, and 16 worked scenarios.
+
+### Reading the Signer Certificate — LATEST
+
+**Added in 5.8.** Phase 2 also returns the certificate the gateway signed with,
+whether or not an appearance was passed:
+
+```java
+SignerCertificateInfo cert = result.getSignerCertificateInfo();
+if (cert != null) {                      // null when absent or unparsable
+    log.info("signed by {} (Aadhaar {}), issued by {}, valid to {}",
+            cert.getSubjectCommonName(), cert.getAadhaarNumber(),
+            cert.getIssuerCommonName(), cert.getNotAfter());
+}
+```
+
+Useful for audit records: it also exposes `getSubjectDN()`, `getIssuerDN()`,
+`getSerialNumber()`, `getNotBefore()`, `getSignatureAlgorithm()`,
+`getPublicKeyAlgorithm()`, `getKeySize()`, `getSha256Thumbprint()` and
+`getCertificateBase64()`. A certificate parse failure never fails an otherwise
+successful signing, so always null-check.
+
 ### Thread Safety
 
 The `eSign` constructor sets static fields on `eSignSettings` (ASP ID, URLs, proxy config). This means:
