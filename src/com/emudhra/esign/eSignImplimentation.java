@@ -1021,6 +1021,10 @@ public final class eSignImplimentation {
     }
 
     protected eSignServiceReturn getSigedDocument(String responseXML, String tempFilePath, int SignatureContents) {
+        return getSigedDocument(responseXML, tempFilePath, SignatureContents, null);
+    }
+
+    protected eSignServiceReturn getSigedDocument(String responseXML, String tempFilePath, int SignatureContents, AadhaarSignatureAppearance appearance) {
         eSignServiceReturn serviceReturnObj = new eSignServiceReturn();
         int contentEstimated = 8192 * 2;
         try {
@@ -1105,6 +1109,9 @@ public final class eSignImplimentation {
                 if (certNodes.getLength() > 0 && certNodes.item(0) != null) {
                     userX509CertBase64 = eSignUtility.getCharacterDataFromElement((Element) certNodes.item(0));
                 }
+                // Surface the signer certificate details to the caller. Parsed once per
+                // transaction; null when absent or unparsable, never fatal.
+                serviceReturnObj.setSignerCertificateInfo(SignerCertificateInfo.fromBase64(userX509CertBase64));
 
                 NodeList docSignatureNodes = tempNodeList.item(0).getChildNodes();
                 for (int itrCount = 0; itrCount < docSignatureNodes.getLength(); itrCount++) {
@@ -1142,8 +1149,11 @@ public final class eSignImplimentation {
                                 returnDocument.setStatus(1);
                             } else {
                                 byte[] array = signClose(PKCS7ResponseBase64, returnDocument.getPreSignedDocument(), SignatureContents);
-                                if (returnDocument.isShowAadhaarOnSignature()) {
-                                    array = patchSignatureAppearance(array, userX509CertBase64, returnDocument.getTextContentPosition());
+                                // A supplied appearance drives the patch on its own, so custom
+                                // content no longer requires showAadhaarOnSignature to be set.
+                                if (appearance != null || returnDocument.isShowAadhaarOnSignature()) {
+                                    array = patchSignatureAppearance(array, userX509CertBase64,
+                                            returnDocument.getTextContentPosition(), appearance);
                                 }
                                 String pdfBase64 = java.util.Base64.getEncoder().encodeToString(array);
                                 returnDocument.setSignedDocument(pdfBase64);
@@ -1318,37 +1328,30 @@ public final class eSignImplimentation {
      * @param signedPdfBytes     bytes of the fully-signed PDF
      * @param userX509CertBase64 Base64-encoded DER X.509 certificate returned
      *                           by the eSign gateway in UserX509Certificate
-     * @param contentPosition    where within each signature box the text block is anchored
+     * @param contentPosition    where within each signature box the text block is anchored;
+     *                           overridden by the appearance when one is supplied
+     * @param appearance         ASP-supplied content and layout settings; null keeps
+     *                           the default block
      * @return patched PDF bytes (or the original bytes if anything fails)
      */
-    private static byte[] patchSignatureAppearance(byte[] signedPdfBytes, String userX509CertBase64, eSign.Coordinates contentPosition) {
+    private static byte[] patchSignatureAppearance(byte[] signedPdfBytes, String userX509CertBase64,
+            eSign.Coordinates contentPosition, AadhaarSignatureAppearance appearance) {
         try {
-            if (userX509CertBase64 == null || userX509CertBase64.trim().isEmpty())
+            // With an appearance the ASP can supply every value itself, so an absent
+            // certificate is no longer a reason to skip patching.
+            if (appearance == null && (userX509CertBase64 == null || userX509CertBase64.trim().isEmpty()))
                 return signedPdfBytes;
 
-            // Parse the signer certificate to extract CN and masked Aadhaar (Title OID)
-            byte[] certBytes = org.emcastle.util.encoders.Base64.decode(userX509CertBase64.trim());
-            X509CertificateStructure cert = X509CertificateStructure.getInstance(
-                    org.emcastle.asn1.ASN1Primitive.fromByteArray(certBytes));
-            X500Name subject = cert.getSubject();
+            if (appearance != null && appearance.getContentPosition() != null)
+                contentPosition = appearance.getContentPosition();
 
-            String certName = "Unknown";
-            RDN[] cnRDNs = subject.getRDNs(BCStyle.CN);
-            if (cnRDNs != null && cnRDNs.length > 0) {
-                certName = IETFUtils.valueToString(cnRDNs[0].getFirst().getValue());
-            }
-
-            // OID 2.5.4.12 (Title / T) — eMudhra stores the masked Aadhaar here
-            String aadhaarLast4 = "XXXX";
-            try {
-                RDN[] titleRDNs = subject.getRDNs(BCStyle.T);
-                if (titleRDNs != null && titleRDNs.length > 0) {
-                    String val = IETFUtils.valueToString(titleRDNs[0].getFirst().getValue());
-                    if (val != null && val.length() >= 4) {
-                        aadhaarLast4 = val.substring(val.length() - 4);
-                    }
-                }
-            } catch (Exception ignored) { }
+            // Signer identity from the certificate (CN, and Aadhaar in the Title OID
+            // 2.5.4.12). The appearance may override either of them.
+            SignerCertificateInfo certInfo = SignerCertificateInfo.fromBase64(userX509CertBase64);
+            String certName = (certInfo != null && certInfo.getSubjectCommonName() != null)
+                    ? certInfo.getSubjectCommonName() : "Unknown";
+            String certAadhaar = (certInfo != null && certInfo.getAadhaarNumber() != null)
+                    ? certInfo.getAadhaarNumber() : "XXXX";
 
             ByteArrayInputStream inputMs = new ByteArrayInputStream(signedPdfBytes);
             ByteArrayOutputStream outputMs = new ByteArrayOutputStream();
@@ -1364,11 +1367,12 @@ public final class eSignImplimentation {
                 return signedPdfBytes;
             }
 
-            // Build a shared font resource dictionary (Helvetica Type1, /F1)
+            // Build a shared font resource dictionary (base-14 Type1, /F1)
+            String baseFontName = appearance != null ? appearance.resolveBaseFontName() : "Helvetica";
             PdfDictionary fontObj = new PdfDictionary();
             fontObj.put(PdfName.TYPE, PdfName.FONT);
             fontObj.put(PdfName.SUBTYPE, new PdfName("Type1"));
-            fontObj.put(PdfName.BASEFONT, new PdfName("Helvetica"));
+            fontObj.put(PdfName.BASEFONT, new PdfName(baseFontName));
             fontObj.put(new PdfName("Encoding"), new PdfName("WinAnsiEncoding"));
             PdfIndirectObject fontRef = stamper.getWriter().addToBody(fontObj);
 
@@ -1379,9 +1383,10 @@ public final class eSignImplimentation {
             // ponytail: ESP key marks already-patched appearances so re-entry skips them (avoids O(n²) on multi-signer PDFs)
             resDict.put(new PdfName("ESP"), PdfBoolean.PDFTRUE);
 
+            // Same face for the width metrics, so auto-fit matches what is drawn
             BaseFont bf = null;
             try {
-                bf = BaseFont.createFont(BaseFont.HELVETICA, BaseFont.CP1252, BaseFont.NOT_EMBEDDED);
+                bf = BaseFont.createFont(baseFontName, BaseFont.CP1252, BaseFont.NOT_EMBEDDED);
             } catch (Exception ignored) {}
 
             SimpleDateFormat sdf = new SimpleDateFormat("dd-MMM-yyyy HH:mm:ss");
@@ -1403,7 +1408,7 @@ public final class eSignImplimentation {
                 Rectangle rect = PdfReader.getNormalizedRectangle(widget.getAsArray(PdfName.RECT));
 
                 // Read date / reason / location from the embedded signature dictionary
-                String signDate = sdf.format(new Date());
+                Date signedOn = new Date();
                 String reason = "";
                 String location = "";
                 try {
@@ -1413,7 +1418,7 @@ public final class eSignImplimentation {
                         if (dateStr != null) {
                             try {
                                 Calendar cal = PdfDate.decode(dateStr.toString());
-                                if (cal != null) signDate = sdf.format(cal.getTime());
+                                if (cal != null) signedOn = cal.getTime();
                             } catch (Exception ignored) { }
                         }
                         PdfString rs = sigDict.getAsString(PdfName.REASON);
@@ -1424,19 +1429,25 @@ public final class eSignImplimentation {
                 } catch (Exception ignored) { }
 
                 // Build text lines for the appearance
-                List<String> lines = new ArrayList<>();
-                lines.add("Digitally Signed by");
-                lines.add("Name : " + certName);
-                lines.add("Aadhaar No : **** **** " + aadhaarLast4);
-                if (reason != null && !reason.trim().isEmpty())
-                    lines.add("Reason: " + reason);
-                lines.add("Date : " + signDate);
+                List<String> lines;
+                if (appearance != null) {
+                    lines = appearance.buildLines(certName, certAadhaar, reason, location, signedOn);
+                } else {
+                    lines = new ArrayList<>();
+                    lines.add("Digitally Signed by");
+                    lines.add("Name : " + certName);
+                    lines.add("Aadhaar No : **** **** " + certAadhaar);
+                    if (reason != null && !reason.trim().isEmpty())
+                        lines.add("Reason: " + reason);
+                    lines.add("Date : " + sdf.format(signedOn));
+                }
+                if (lines.isEmpty()) continue;
 
                 // Auto-fit font size so all lines stay within the signature box
-                final float leftMargin = 4f;
-                final float rightMargin = 4f;
-                final float topMargin = 3f;
-                final float bottomMargin = 3f;
+                final float leftMargin = appearance != null ? appearance.getMarginLeft() : 4f;
+                final float rightMargin = appearance != null ? appearance.getMarginRight() : 4f;
+                final float topMargin = appearance != null ? appearance.getMarginTop() : 3f;
+                final float bottomMargin = appearance != null ? appearance.getMarginBottom() : 3f;
                 float availableWidth = rect.getWidth() - leftMargin - rightMargin;
                 float availableHeight = rect.getHeight() - topMargin - bottomMargin;
 
@@ -1454,9 +1465,14 @@ public final class eSignImplimentation {
                     }
                 }
 
-                // Clamp to a readable range
-                fontSize = Math.max(4f, Math.min(fontSize, 10f));
-                float leading = fontSize;
+                // Clamp to a readable range, unless the ASP fixed the size explicitly
+                if (appearance != null && appearance.getFontSize() > 0) {
+                    fontSize = appearance.getFontSize();
+                } else {
+                    fontSize = Math.max(4f, Math.min(fontSize, 10f));
+                }
+                float leading = (appearance != null && appearance.getLeading() > 0)
+                        ? appearance.getLeading() : fontSize;
                 int n = lines.size();
 
                 // Compute max line width for horizontal centering/right-aligning
@@ -1494,7 +1510,9 @@ public final class eSignImplimentation {
                 StringBuilder cs = new StringBuilder();
                 cs.append("BT\n");
                 cs.append(String.format(java.util.Locale.US, "/F1 %.2f Tf\n", fontSize));
-                cs.append("/DeviceRGB cs\n0 0 0 sc\n");
+                float[] rgb = appearance != null ? appearance.resolveFontColor() : new float[]{0f, 0f, 0f};
+                cs.append("/DeviceRGB cs\n");
+                cs.append(String.format(java.util.Locale.US, "%.3f %.3f %.3f sc\n", rgb[0], rgb[1], rgb[2]));
                 cs.append(String.format(java.util.Locale.US, "%.2f %.2f Td\n", startX, startY));
                 cs.append(String.format(java.util.Locale.US, "%.2f TL\n", leading));
                 for (int li = 0; li < lines.size(); li++) {

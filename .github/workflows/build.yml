@@ -33,8 +33,8 @@ jobs:
       - name: Upload JAR as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: eSignASPLibrary5_5
-          path: dist/eSignASPLibrary5_5.jar
+          name: eSignASPLibrary5_8
+          path: dist/eSignASPLibrary5_8.jar
           retention-days: 90
 
       - name: Read version
@@ -48,5 +48,5 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.value }}
           name: eSign SDK ${{ steps.version.outputs.value }}
-          files: dist/eSignASPLibrary5_5.jar
+          files: dist/eSignASPLibrary5_8.jar
           generate_release_notes: true

@@ -172,8 +172,25 @@ public class eSign {
     }
 
     public eSignServiceReturn getSigedDocument(String eSignResponse, String preSignedTempFile) {
+        return getSigedDocument(eSignResponse, preSignedTempFile, null);
+    }
+
+    /**
+     * Phase 2 with a caller-supplied visible signature appearance.
+     *
+     * <p>The appearance controls the header line, which of name / Aadhaar /
+     * reason / location / date are drawn, their labels, and the block's layout.
+     * Pass {@code null} for the default appearance.
+     *
+     * <p>Supplying an appearance is enough to trigger appearance patching —
+     * {@code showAadhaarOnSignature} need not be set on the input.
+     *
+     * <p>On success {@link eSignServiceReturn#getSignerCertificateInfo()} carries
+     * the details of the signer certificate returned by the gateway.
+     */
+    public eSignServiceReturn getSigedDocument(String eSignResponse, String preSignedTempFile, AadhaarSignatureAppearance appearance) {
         eSignImplimentation impl = new eSignImplimentation(pfxpath, password, pfxAlias, proxyIp, proxyPort, proxyreq);
-        return impl.getSigedDocument(eSignResponse, preSignedTempFile, SignatureContents);
+        return impl.getSigedDocument(eSignResponse, preSignedTempFile, SignatureContents, appearance);
     }
 
     public eSignServiceReturn getEncryptedPath(String path) {

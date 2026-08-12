@@ -52,6 +52,25 @@ public final class eSignServiceReturn {
     private String errorMessage;
     private ArrayList<ReturnDocument> returnDocuments;
     private String enCryptedPath;
+    private SignerCertificateInfo signerCertificateInfo;
+
+    /**
+     * Details of the signer certificate returned by the gateway in
+     * {@code UserX509Certificate}. Populated by {@code getSigedDocument};
+     * null in phase 1, and null when the response carried no parsable certificate.
+     *
+     * @return the signerCertificateInfo
+     */
+    public SignerCertificateInfo getSignerCertificateInfo() {
+        return signerCertificateInfo;
+    }
+
+    /**
+     * @param signerCertificateInfo the signerCertificateInfo to set
+     */
+    protected void setSignerCertificateInfo(SignerCertificateInfo signerCertificateInfo) {
+        this.signerCertificateInfo = signerCertificateInfo;
+    }
 
     /**
      * @return the transactionID

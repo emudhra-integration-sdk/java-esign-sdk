@@ -29,7 +29,9 @@ A Java SDK for integrating eMudhra's Aadhaar-based and PAN-based eSign service i
 - **Bank KYC** — Perform Bank KYC verification through eMudhra
 - **Configurable Logging** — File-based logging with rotation and multiple log levels
 - **Proxy Support** — HTTP proxy with optional authentication
-- **NEW: Signature Appearance Patching** — Automatically updates the visual appearance of signed signature fields with the signer's name and masked Aadhaar number extracted from the gateway-returned certificate
+- **Signature Appearance Patching** — Automatically updates the visual appearance of signed signature fields with the signer's name and masked Aadhaar number extracted from the gateway-returned certificate
+- **LATEST: Customisable Aadhaar Appearance** — Define the signature block yourself with `AadhaarSignatureAppearance`: placeholder-based custom content (`{name}`, `{aadhaar}`, `{reason}`, `{location}`, `{date}`), an on/off switch for the Aadhaar number, per-field labels and ordering, date format and timezone, italic/bold, colour, size and margins
+- **LATEST: Signer Certificate Details** — `eSignServiceReturn.getSignerCertificateInfo()` exposes the parsed gateway certificate: signer CN, Aadhaar number, issuer, serial, validity, algorithm, key size and SHA-256 thumbprint
 
 ## Prerequisites
 
@@ -107,7 +109,7 @@ ant compile
 ant clean
 ```
 
-Output: `dist/eSignASPLibrary5_5.jar`
+Output: `dist/eSignASPLibrary5_8.jar`
 
 > The build badge above confirms the source compiles correctly on every commit. A passing build means the code is ready for you to compile and use.
 

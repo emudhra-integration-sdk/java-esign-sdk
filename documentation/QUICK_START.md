@@ -16,6 +16,9 @@ A Java SDK for eMudhra's Aadhaar-based and PAN-based eSign service. Implements *
 - [Multi-Document Signing](#multi-document-signing)
 - [Hash-Based Signing](#hash-based-signing)
 - [Aadhaar Appearance Patching](#aadhaar-appearance-patching)
+- [Customising the Aadhaar Appearance](#customising-the-aadhaar-appearance--latest) — **LATEST**
+- [Signer Certificate Details](#signer-certificate-details--latest) — **LATEST**
+- [Signature Content Position](#signature-content-position)
 - [API Reference](#api-reference)
   - [Constructors](#constructors)
   - [Methods](#methods)
@@ -52,7 +55,7 @@ Phase 2: User Authentication + getSigedDocument()
 ## Prerequisites
 
 - **Java 8** or higher
-- **eSignASPLibrary5_5.jar** (the SDK JAR from `dist/`)
+- **eSignASPLibrary5_8.jar** (the SDK JAR from `dist/`)
 - **All dependency JARs** from the `lib/` folder:
   - batik-all-1.13.jar
   - commons-io-2.4.jar
@@ -858,14 +861,300 @@ Date : 18-May-2026 14:35:22
 The font size is computed dynamically so all lines fit within the signature box:
 
 - **Height constraint** — `fontSize = boxHeight / numberOfLines`
-- **Width constraint** — each line is measured using Times-Italic font metrics; the font is scaled down if any line would exceed the box width
+- **Width constraint** — each line is measured with the metrics of the face actually being drawn; the font is scaled down if any line would exceed the box width
 - **Clamped** to a minimum of 4 pt and maximum of 10 pt for readability
 
-This ensures the text never overflows the signature box regardless of box dimensions or text length.
+This ensures the text never overflows the signature box regardless of box dimensions or text length. Set `setFontSize(...)` on a custom appearance to fix the size and bypass auto-fit entirely.
 
 ### Default behaviour (when not set / set to false)
 
 The iText signature appearance configured during Phase 1 (signed-by name, reason, location, date) is preserved unchanged. No certificate extraction or appearance rewriting occurs.
+
+---
+
+## Customising the Aadhaar Appearance — LATEST
+
+**Added in 5.8.** The block above is the default. To control its content and
+layout, pass an `AadhaarSignatureAppearance` to the new three-argument
+`getSigedDocument` overload:
+
+```java
+AadhaarSignatureAppearance ap = new AadhaarSignatureAppearance();
+ap.setContentLines(Arrays.asList(
+        "E-Signed By: {name}",
+        "Date: {date}",
+        "Reason: {reason}",
+        "Location: {location}"));
+ap.setDateFormat("dd/MM/yyyy HH:mm:ss z");
+ap.setTimeZone("IST");
+ap.setItalic(true);
+
+eSignServiceReturn result = esignObj.getSigedDocument(responseXML, preSignedTempFile, ap);
+```
+
+Passing an appearance is enough to trigger patching on its own — `setShowAadhaarOnSignature(true)` is **not** required in Phase 1. Passing `null`, or calling the two-argument overload, keeps the default appearance exactly as before.
+
+### Two ways to define content
+
+**Template mode** — `setContentLines(...)`. The lines you supply *are* the appearance. `headerText`, every `*Label`, `lineOrder`, and all `show*` flags except `showAadhaar` are ignored.
+
+**Structured mode** — used when `contentLines` is unset. The block is assembled from `headerText`, the `show*` toggles, the `*Label` values, and `lineOrder`.
+
+### Placeholders (template mode)
+
+| Placeholder | Resolves to |
+|---|---|
+| `{name}` | the certificate CN — or `signerName` when one is supplied |
+| `{certName}` | the certificate CN always, even when `signerName` is set |
+| `{aadhaar}` | masked number, e.g. `**** **** 1234`; empty when `showAadhaar` is `false` |
+| `{aadhaarDigits}` | the four digits alone; same toggle |
+| `{reason}` | PDF `/Reason` |
+| `{location}` | PDF `/Location` |
+| `{date}` | signing time, formatted per `dateFormat` and `timeZone` |
+
+**Empty-line suppression:** a line whose placeholders *all* resolve to empty is dropped, so optional values never leave a dangling label behind. A line with at least one filled placeholder is kept, and a line containing no placeholders is always kept.
+
+### Settings
+
+| Setter | Default | Effect |
+|---|---|---|
+| `setContentLines(List<String>)` | null | Template lines; when set, overrides labels, header, order and `show*` |
+| `setSignerName(String)` | null | Overrides `{name}`; unset means the certificate CN is used |
+| `setShowAadhaar(boolean)` | `true` | Enables/disables the Aadhaar number in both modes |
+| `setHeaderText(String)` | `"Digitally Signed by"` | First line; `null` or `""` omits it |
+| `setShowName` / `setShowReason` / `setShowLocation` / `setShowDate` | `true` / `true` / `false` / `true` | Structured-mode toggles |
+| `setNameLabel` / `setAadhaarLabel` / `setReasonLabel` / `setLocationLabel` / `setDateLabel` | `"Name : "`, `"Aadhaar No : "`, `"Reason : "`, `"Location : "`, `"Date : "` | Structured-mode labels |
+| `setLineOrder(List<Field>)` | `HEADER, NAME, AADHAAR, REASON, LOCATION, DATE` | Structured-mode order; omitted fields are not drawn |
+| `setAdditionalLines(List<String>)` | null | Literal lines appended in both modes |
+| `setDateFormat(String)` | `"dd-MMM-yyyy HH:mm:ss"` | `SimpleDateFormat` pattern |
+| `setTimeZone(String)` | `"IST"` | Zone for `{date}` |
+| `setItalic(boolean)` / `setBold(boolean)` | `false` | Selects among the base-14 Helvetica faces; nothing is embedded |
+| `setFontSize(float)` | `0` | `0` auto-fits; any other value is used as-is |
+| `setLeading(float)` | `0` | `0` uses the font size |
+| `setFontColorHex(String)` | null | `"RRGGBB"` or `"#RRGGBB"`; invalid values fall back to black |
+| `setContentPosition(eSign.Coordinates)` | `TopLeft` | Anchor within the signature rectangle |
+| `setMarginLeft` / `Right` / `Top` / `Bottom` | `4`, `4`, `3`, `3` | Padding inside the rectangle, in points |
+
+The name is always resolved as `signerName` → certificate CN. There is no setter for the Aadhaar name or number: both come from the gateway certificate (CN, and the Title OID `2.5.4.12`).
+
+### Scenarios and expected output
+
+All examples assume a certificate with `CN=Bavaji` and Aadhaar `1234`, a PDF whose `/Reason` is `Digital Signature` and `/Location` is `India`, signed at `04-Aug-2026 14:10:26 IST`.
+
+**1. No appearance passed — unchanged default**
+
+```java
+esignObj.getSigedDocument(responseXML, tempFile);
+```
+```
+Digitally Signed by
+Name : Bavaji
+Aadhaar No : **** **** 1234
+Reason: Digital Signature
+Date : 04-Aug-2026 14:10:26
+```
+
+**2. Default appearance object**
+
+```java
+new AadhaarSignatureAppearance()
+```
+```
+Digitally Signed by
+Name : Bavaji
+Aadhaar No : **** **** 1234
+Reason : Digital Signature
+Date : 04-Aug-2026 14:10:26
+```
+Two deliberate differences from scenario 1: the reason label is `"Reason : "` for consistency with the others, and the date renders in IST rather than the JVM default zone.
+
+**3. Template with the name from the certificate**
+
+```java
+ap.setContentLines(Arrays.asList(
+        "E-Signed By: {name}", "Date: {date}", "Reason: {reason}", "Location: {location}"));
+ap.setDateFormat("dd/MM/yyyy HH:mm:ss z");
+ap.setItalic(true);
+```
+```
+E-Signed By: Bavaji
+Date: 04/08/2026 14:10:26 IST
+Reason: Digital Signature
+Location: India
+```
+
+**4. Aadhaar number enabled in a template**
+
+```java
+ap.setContentLines(Arrays.asList("E-Signed By: {name}", "Aadhaar No: {aadhaar}"));
+```
+```
+E-Signed By: Bavaji
+Aadhaar No: **** **** 1234
+```
+
+**5. Aadhaar number disabled — the whole line disappears**
+
+```java
+ap.setContentLines(Arrays.asList("E-Signed By: {name}", "Aadhaar No: {aadhaar}"));
+ap.setShowAadhaar(false);
+```
+```
+E-Signed By: Bavaji
+```
+
+**6. Digits-only placeholder**
+
+```java
+ap.setContentLines(Arrays.asList("XXXX-XXXX-{aadhaarDigits}"));
+```
+```
+XXXX-XXXX-1234
+```
+
+**7. Optional value absent — line dropped, no dangling label**
+
+Same template as scenario 3, but the PDF carries no `/Reason`:
+```
+E-Signed By: Bavaji
+Date: 04/08/2026 14:10:26 IST
+Location: India
+```
+
+**8. ASP-supplied signer name overrides the certificate**
+
+```java
+ap.setSignerName("Bavaji Jakkamsetti");
+ap.setContentLines(Arrays.asList("Signer: {name}", "Cert: {certName}"));
+```
+```
+Signer: Bavaji Jakkamsetti
+Cert: Bavaji
+```
+
+**9. Literal line with no placeholders — always kept**
+
+```java
+ap.setContentLines(Arrays.asList("DCMS Organization eSign", "Reason: {reason}"));
+```
+With no `/Reason` present:
+```
+DCMS Organization eSign
+```
+
+**10. Partially filled line — kept**
+
+```java
+ap.setContentLines(Arrays.asList("{name} / {reason}"));
+```
+With no `/Reason` present:
+```
+Bavaji / 
+```
+
+**11. Structured mode — custom header and labels**
+
+```java
+ap.setHeaderText("eSigned by");
+ap.setNameLabel("Signed By : ");
+ap.setShowAadhaar(false);
+ap.setShowDate(false);
+ap.setShowReason(false);
+```
+```
+eSigned by
+Signed By : Bavaji
+```
+
+**12. Structured mode — reordered, with Location on**
+
+```java
+ap.setShowLocation(true);
+ap.setLineOrder(Arrays.asList(Field.NAME, Field.DATE, Field.REASON, Field.LOCATION));
+```
+```
+Name : Bavaji
+Date : 04-Aug-2026 14:10:26
+Reason : Digital Signature
+Location : India
+```
+`AADHAAR` is absent from the list, so no Aadhaar line is drawn — omitting a field from `lineOrder` replaces its `show*` flag.
+
+**13. Header suppressed**
+
+```java
+ap.setHeaderText(null);   // or ""
+```
+```
+Name : Bavaji
+Aadhaar No : **** **** 1234
+Reason : Digital Signature
+Date : 04-Aug-2026 14:10:26
+```
+
+**14. Additional literal lines, appended in either mode**
+
+```java
+ap.setAdditionalLines(Arrays.asList("DCMS Organization eSign", "", null));
+```
+Appended after the block; blank and null entries are skipped.
+
+**15. Explicit font size, colour and position**
+
+```java
+ap.setFontSize(7f);
+ap.setLeading(9f);
+ap.setFontColorHex("#0000FF");
+ap.setContentPosition(eSign.Coordinates.BottomLeft);
+```
+Same text as the chosen mode, drawn at 7 pt with 9 pt line spacing in blue, anchored bottom-left. Auto-fit is skipped because `fontSize` is non-zero — an oversized value can overflow the rectangle.
+
+**16. Absent Aadhaar in the certificate**
+
+If the certificate carries no Title OID, `{aadhaar}` and `{aadhaarDigits}` resolve empty and the Aadhaar line is dropped in both modes — no `null` or `XXXX` is ever printed.
+
+### Limitations
+
+- **Latin-1 only.** The block is drawn with a non-embedded base-14 Helvetica face in WinAnsi encoding, so a name in a regional script will not render. An embedded Unicode font is not yet supported.
+- **`z` in `dateFormat`** emits the zone abbreviation and is locale-sensitive. For a guaranteed literal, drop `z` and append the text through `additionalLines` or a label.
+- The signature **rectangle size** comes from Phase 1 (`pageLevelCoordinates` / `coordinates`). `contentPosition` only anchors the text inside whatever rectangle exists.
+- Patching replaces the signature's appearance stream, so the viewer's own validity tick is not preserved. Tick placement is controlled by the PDF viewer and cannot be positioned by the SDK.
+
+---
+
+## Signer Certificate Details — LATEST
+
+**Added in 5.8.** After Phase 2, the parsed signer certificate is available on the service return. It is populated whenever the gateway response carried a `UserX509Certificate`, regardless of whether an appearance was passed.
+
+```java
+eSignServiceReturn result = esignObj.getSigedDocument(responseXML, tempFile);
+
+SignerCertificateInfo cert = result.getSignerCertificateInfo();
+if (cert != null) {
+    System.out.println(cert.getSubjectCommonName());   // Aadhaar name held in the certificate
+    System.out.println(cert.getAadhaarNumber());       // Title OID 2.5.4.12
+    System.out.println(cert.getIssuerCommonName());
+    System.out.println(cert.getNotAfter());
+}
+```
+
+| Getter | Return Type | Description |
+|--------|-------------|-------------|
+| `getSubjectCommonName()` | String | Signer CN — the Aadhaar name in the certificate |
+| `getAadhaarNumber()` | String | Aadhaar digits from the Title OID `2.5.4.12`; null when absent |
+| `getSubjectDN()` | String | Full subject distinguished name |
+| `getIssuerCommonName()` | String | Issuing CA common name |
+| `getIssuerDN()` | String | Full issuer distinguished name |
+| `getSerialNumber()` | String | Certificate serial number, uppercase hex |
+| `getNotBefore()` | Date | Validity start |
+| `getNotAfter()` | Date | Validity end |
+| `getSignatureAlgorithm()` | String | e.g. `SHA256withRSA` |
+| `getPublicKeyAlgorithm()` | String | e.g. `RSA`, `EC` |
+| `getKeySize()` | int | Key size in bits; `0` when neither RSA nor EC |
+| `getSha256Thumbprint()` | String | SHA-256 fingerprint of the DER certificate, uppercase hex |
+| `getCertificateBase64()` | String | The certificate as returned by the gateway |
+
+Returns `null` when the response carried no certificate or it could not be parsed — a certificate parse failure never fails an otherwise successful signing, so always null-check before use.
 
 ---
 
@@ -1211,6 +1500,7 @@ Returned by all SDK methods.
 | `getErrorCode()` | String | Error code (ESS-XXX) on failure |
 | `getErrorMessage()` | String | Human-readable error message |
 | `getEnCryptedPath()` | String | Encrypted path (from getEncryptedPath()) |
+| `getSignerCertificateInfo()` | SignerCertificateInfo | **LATEST (5.8)** — parsed signer certificate (Phase 2); null when absent or unparsable |
 
 ---
 
@@ -1428,7 +1718,7 @@ ant clean jar
 
 The built JAR will be at:
 ```
-dist/eSignASPLibrary5_5.jar
+dist/eSignASPLibrary5_8.jar
 ```
 
 ### Common Build Errors
@@ -1456,4 +1746,4 @@ A JRE is installed instead of a JDK. Install JDK 8 or higher and ensure `JAVA_HO
 
 ### Using the JAR
 
-Once built, add `dist/eSignASPLibrary5_5.jar` and all JARs from the `lib/` folder to your project's classpath.
+Once built, add `dist/eSignASPLibrary5_8.jar` and all JARs from the `lib/` folder to your project's classpath.

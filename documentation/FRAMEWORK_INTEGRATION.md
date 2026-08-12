@@ -28,7 +28,7 @@ Add the SDK JAR and dependencies to your project. If using Maven with local JARs
     <artifactId>eSignASPLibrary</artifactId>
     <version>5.5</version>
     <scope>system</scope>
-    <systemPath>${project.basedir}/lib/eSignASPLibrary5_5.jar</systemPath>
+    <systemPath>${project.basedir}/lib/eSignASPLibrary5_8.jar</systemPath>
 </dependency>
 <!-- Add all JARs from lib/ similarly, or copy them to a shared lib folder -->
 ```
