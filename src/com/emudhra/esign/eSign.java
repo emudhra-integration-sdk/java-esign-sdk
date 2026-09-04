@@ -145,9 +145,7 @@ public class eSign {
         eSignSettings.setESIGNURL(eSignURL);
         eSignSettings.setESIGNURLV2(eSignURLV2);
 
-        if (pdfViewerLicence != null) {
-            eSignSettings.setEncryptionKey(getSha256("PDF_VIEWER_KIT_101" + ASPID));
-        }
+        eSignSettings.setEncryptionKey(getSha256("PDF_VIEWER_KIT_101" + ASPID));
     }
 
     @Deprecated
