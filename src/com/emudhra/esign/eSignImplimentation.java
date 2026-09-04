@@ -207,7 +207,9 @@ public final class eSignImplimentation {
                     try {
 
                         String hexHashDocument = "";
-                        String preSignedPdf = "";
+                        byte[] preSignedRaw = null;
+                        int sigPosition = -1;
+                        int sigBoutLen = 0;
                         String cordinate = "";
                         boolean isPDF = true;
                         try ( ByteArrayOutputStream fos = new ByteArrayOutputStream()) {
@@ -799,21 +801,24 @@ public final class eSignImplimentation {
                                 HashMap<PdfName, Integer> exc = new HashMap<>();
                                 exc.put(PdfName.CONTENTS, contentEstimated * 2 + 2);
                                 appearance.preClose(exc);
-                                int position = (int) appearance.exclusionLocations.get(PdfName.CONTENTS).getPosition();
-                                int outBufferSIZE = appearance.getSigout().size();
-                                String preSignedBytes = new String(Base64.encode(appearance.getSigout().toByteArray()), "UTF-8");
-                                preSignedPdf = position + "|" + outBufferSIZE + "|" + preSignedBytes;
-                                preSignedPdf = org.emcastle.util.encoders.Base64.toBase64String(preSignedPdf.getBytes("utf-8"));
-                                InputStream is1 = appearance.getRangeStream();
-                                byte[] data = IOUtils.toByteArray(is1);
+                                // Keep the pre-signed PDF as ONE raw byte[] — no Base64
+                                // layering here; the temp file writer streams it to disk.
+                                sigPosition = (int) appearance.exclusionLocations.get(PdfName.CONTENTS).getPosition();
+                                sigBoutLen = appearance.getSigout().size();
+                                preSignedRaw = appearance.getSigout().toByteArray();
                                 MessageDigest digest = MessageDigest.getInstance("SHA-256");
-                                digest.update(data);
-                                byte[] hash = digest.digest();
-                                String hashData = new String(Base64.encode(hash));
-                                byte[] hashdata = Base64.decode(hashData);
-                                hexHashDocument = Hex.toHexString(hashdata);
+                                InputStream is1 = appearance.getRangeStream();
+                                byte[] hashBuf = new byte[64 * 1024];
+                                int hashRead;
+                                while ((hashRead = is1.read(hashBuf)) > 0) {
+                                    digest.update(hashBuf, 0, hashRead);
+                                }
+                                hexHashDocument = Hex.toHexString(digest.digest());
                             }
-                            ReturnDocument returnDocument = new ReturnDocument("", count, input.getDocInfo(), input.getDocURL(), hexHashDocument, preSignedPdf, eSign.InputType.PDF, input.isShowAadhaarOnSignature(), input.getTextContentPosition());
+                            ReturnDocument returnDocument = new ReturnDocument("", count, input.getDocInfo(), input.getDocURL(), hexHashDocument, "", eSign.InputType.PDF, input.isShowAadhaarOnSignature(), input.getTextContentPosition());
+                            if (preSignedRaw != null) {
+                                returnDocument.setPreSignedRaw(preSignedRaw, sigPosition, sigBoutLen);
+                            }
                             returnDocuments.add(returnDocument);
                             count++;
                         } catch (Exception e) {
@@ -851,10 +856,7 @@ public final class eSignImplimentation {
                 serviceReturnObj.setErrorMessage("Unable to generate appreance");
                 return serviceReturnObj;
             }
-            String tempData = eSignUtility.generateTempTransactionData(returnDocuments);
-            try ( PrintWriter writer = new PrintWriter(new File(tempFilePath))) {
-                writer.print(tempData);
-            }
+            eSignUtility.writeTempTransactionFile(tempFilePath, returnDocuments);
             serviceReturnObj.setPreSignedTempFile(tempFilePath);
 
             String requestXML = "";
@@ -1055,9 +1057,9 @@ public final class eSignImplimentation {
                 serviceReturnObj.setStatus(0);
                 return serviceReturnObj;
             }
-            byte[] preSignedBytes = null;
+            ArrayList<ReturnDocument> returnDocumentsFromTemp = null;
             try {
-                preSignedBytes = Files.readAllBytes(tempfile.toPath());
+                returnDocumentsFromTemp = eSignUtility.readTempTransactionFile(tempfile);
             } catch (Exception e) {
                 LOGGER.log(java.util.logging.Level.WARNING, "Unable to read temp file: " + tempFilePath, e);
                 serviceReturnObj.setPreSignedTempFile(tempFilePath);
@@ -1086,7 +1088,7 @@ public final class eSignImplimentation {
             } else if (status.equals("1")) {
                 String responseCode = eSignUtility.GetXpathValue(xPath, "/EsignResp/@resCode", doc);
                 serviceReturnObj.setResponseCode(responseCode);
-                ArrayList<ReturnDocument> returnDocuments = eSignUtility.getReturnDocumentsFromPreSignedPDFFile(preSignedBytes);
+                ArrayList<ReturnDocument> returnDocuments = returnDocumentsFromTemp;
                 NodeList signatureNodes = doc.getElementsByTagName("DocSignature");
                 if (signatureNodes.getLength() <= 0) {
                     serviceReturnObj.setResponseXML(responseXML);
@@ -1144,11 +1146,17 @@ public final class eSignImplimentation {
                     } else {
                         String PKCS7ResponseBase64 = eSignUtility.getCharacterDataFromElement(sigElement);
                         try {
-                            if (eSignUtility.isNullOrWhitespace(returnDocument.getPreSignedDocument())) {
+                            if (!returnDocument.hasPreSignedPayload()) {
                                 returnDocument.setSignedData(PKCS7ResponseBase64);
                                 returnDocument.setStatus(1);
                             } else {
-                                byte[] array = signClose(PKCS7ResponseBase64, returnDocument.getPreSignedDocument(), SignatureContents);
+                                byte[] array;
+                                if (returnDocument.getPreSignedRaw() != null) {
+                                    array = signClose(PKCS7ResponseBase64, returnDocument.getPreSignedRaw(),
+                                            returnDocument.getSigPosition(), returnDocument.getSigBoutLen(), SignatureContents);
+                                } else {
+                                    array = signClose(PKCS7ResponseBase64, returnDocument.getPreSignedDocument(), SignatureContents);
+                                }
                                 // A supplied appearance drives the patch on its own, so custom
                                 // content no longer requires showAadhaarOnSignature to be set.
                                 if (appearance != null || returnDocument.isShowAadhaarOnSignature()) {
@@ -1188,12 +1196,18 @@ public final class eSignImplimentation {
         }
     }
 
+    /** Legacy path: pre-signed document delivered as nested Base64 (old temp-file format). */
     private byte[] signClose(String pkcs7, String preSignedValue, int SignatureContents) throws Exception {
+        byte[] preSignedBytes = org.emcastle.util.encoders.Base64.decode(preSignedValue);
+        String preSignedDoc = new String(preSignedBytes, StandardCharsets.UTF_8);
+        String[] Doc = preSignedDoc.split("\\|");
+        byte[] bout = org.emcastle.util.encoders.Base64.decode(Doc[2]);
+        return signClose(pkcs7, bout, Integer.parseInt(Doc[0]), Integer.parseInt(Doc[1]), SignatureContents);
+    }
+
+    /** Patches the PKCS7 signature into the pre-signed PDF bytes in place. */
+    private byte[] signClose(String pkcs7, byte[] bout, int position, int boutLen, int SignatureContents) throws Exception {
         try {
-            byte[] preSignedBytes = org.emcastle.util.encoders.Base64.decode(preSignedValue);
-            String preSignedDoc = new String(preSignedBytes, StandardCharsets.UTF_8);
-            ByteArrayOutputStream originalout = new ByteArrayOutputStream();
-            String[] Doc = preSignedDoc.split("\\|");
             byte[] sigbytes = org.emcastle.util.encoders.Base64.decode(pkcs7);
             byte[] paddedSig;
             if (SignatureContents != 0) {
@@ -1206,9 +1220,6 @@ public final class eSignImplimentation {
             PdfDictionary dic2 = new PdfDictionary();
             dic2.put(PdfName.CONTENTS, new PdfString(paddedSig).setHexWriting(true));
 
-            byte[] bout = org.emcastle.util.encoders.Base64.decode(Doc[2]);
-            int boutLen = Integer.parseInt(Doc[1]);
-            int position = Integer.parseInt(Doc[0]);
             //Calculate exclusionLocations
             HashMap<PdfName, Integer> exclusionSizes = new HashMap<PdfName, Integer>();
             if (SignatureContents != 0) {
@@ -1245,9 +1256,10 @@ public final class eSignImplimentation {
             if (dic2.size() != exclusionLocations.size()) {
                 throw new IllegalArgumentException(MessageLocalization.getComposedMessage("the.update.dictionary.has.less.keys.than.required"));
             }
-            originalout.write(bout, 0, boutLen);
-
-            return originalout.toByteArray();
+            if (bout.length == boutLen) {
+                return bout;
+            }
+            return java.util.Arrays.copyOf(bout, boutLen);
         } catch (IOException | IllegalArgumentException e) {
             throw e;
         }

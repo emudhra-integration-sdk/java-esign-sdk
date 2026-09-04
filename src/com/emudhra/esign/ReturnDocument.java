@@ -29,6 +29,12 @@ public final class ReturnDocument {
     private boolean showAadhaarOnSignature;
     private eSign.Coordinates textContentPosition = eSign.Coordinates.TopLeft;
 
+    // Raw pre-signed PDF payload (temp-file format V2). Held once, never
+    // Base64-wrapped in memory; preSignedDocument stays null on this path.
+    private byte[] preSignedRaw;
+    private int sigPosition = -1;
+    private int sigBoutLen;
+
     protected ReturnDocument(String signedDocument, int docId, String docInfo, String docURL, String documentHash, String preSignedDocument, eSign.InputType inputType) {
         this(signedDocument, docId, docInfo, docURL, documentHash, preSignedDocument, inputType, false, eSign.Coordinates.TopLeft);
     }
@@ -52,6 +58,30 @@ public final class ReturnDocument {
     protected String getReturnDocumentObjBase64() throws UnsupportedEncodingException {
         String returnDocument = Integer.toString(docId) + "|" + docInfo + "|" + docURL + "|" + documentHash + "|" + preSignedDocument + "|" + showAadhaarOnSignature + "|" + textContentPosition.name();
         return org.emcastle.util.encoders.Base64.toBase64String(returnDocument.getBytes("utf-8"));
+    }
+
+    protected void setPreSignedRaw(byte[] preSignedRaw, int sigPosition, int sigBoutLen) {
+        this.preSignedRaw = preSignedRaw;
+        this.sigPosition = sigPosition;
+        this.sigBoutLen = sigBoutLen;
+    }
+
+    protected byte[] getPreSignedRaw() {
+        return preSignedRaw;
+    }
+
+    protected int getSigPosition() {
+        return sigPosition;
+    }
+
+    protected int getSigBoutLen() {
+        return sigBoutLen;
+    }
+
+    /** True when this document carries a pre-signed PDF in either representation. */
+    protected boolean hasPreSignedPayload() {
+        return (preSignedRaw != null && preSignedRaw.length > 0)
+                || !eSignUtility.isNullOrWhitespace(preSignedDocument);
     }
 
     public boolean isShowAadhaarOnSignature() {

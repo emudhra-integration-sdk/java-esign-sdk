@@ -7,8 +7,14 @@ package com.emudhra.esign;
 
 import esign.text.Rectangle;
 import esign.text.pdf.PdfReader;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.DataOutputStream;
+import java.io.EOFException;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.StringReader;
@@ -16,7 +22,9 @@ import java.io.StringWriter;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
@@ -600,6 +608,151 @@ public final class eSignUtility {
         }
     }
 
+    /**
+     * Temp-file format V2 magic. Legacy files are a single line of Base64 and
+     * can never contain '\n', so this prefix is unambiguous.
+     */
+    private static final byte[] TEMP_FILE_MAGIC = "ESIGV2\n".getBytes(StandardCharsets.US_ASCII);
+
+    /**
+     * Writes the pre-signed transaction data as format V2: the magic, then per
+     * document one ASCII header line
+     * {@code docId|b64(docInfo)|b64(docURL)|hash|position|boutLen|showAadhaar|textPos|payloadLen}
+     * followed by the raw pre-signed PDF bytes. Streams straight to disk —
+     * no Base64 layering, no whole-transaction String is ever built, so heap
+     * cost is O(1) beyond the payload the documents already hold.
+     */
+    protected static void writeTempTransactionFile(String tempFilePath, ArrayList<ReturnDocument> returnDocuments) throws Exception {
+        try (BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(tempFilePath), 64 * 1024)) {
+            out.write(TEMP_FILE_MAGIC);
+            for (ReturnDocument r : returnDocuments) {
+                if (r.getDocId() == 0) {
+                    continue;
+                }
+                byte[] payload = r.getPreSignedRaw();
+                int payloadLen = payload == null ? 0 : payload.length;
+                String header = r.getDocId() + "|"
+                        + toB64Field(r.getDocInfo()) + "|"
+                        + toB64Field(r.getDocURL()) + "|"
+                        + (r.getDocumentHash() == null ? "" : r.getDocumentHash()) + "|"
+                        + r.getSigPosition() + "|"
+                        + r.getSigBoutLen() + "|"
+                        + r.isShowAadhaarOnSignature() + "|"
+                        + r.getTextContentPosition().name() + "|"
+                        + payloadLen + "\n";
+                out.write(header.getBytes(StandardCharsets.US_ASCII));
+                if (payloadLen > 0) {
+                    out.write(payload);
+                }
+            }
+        }
+    }
+
+    /**
+     * Reads a pre-signed transaction temp file in either format: V2 (streamed,
+     * raw payloads) or the legacy single-blob nested-Base64 format.
+     */
+    protected static ArrayList<ReturnDocument> readTempTransactionFile(File tempFile) throws Exception {
+        try (BufferedInputStream in = new BufferedInputStream(new FileInputStream(tempFile), 64 * 1024)) {
+            byte[] magic = new byte[TEMP_FILE_MAGIC.length];
+            int got = 0;
+            while (got < magic.length) {
+                int n = in.read(magic, got, magic.length - got);
+                if (n < 0) {
+                    break;
+                }
+                got += n;
+            }
+            if (got == magic.length && Arrays.equals(magic, TEMP_FILE_MAGIC)) {
+                return readTempTransactionV2(in);
+            }
+        }
+        // Legacy format written by older SDK versions.
+        return getReturnDocumentsFromPreSignedPDFFile(Files.readAllBytes(tempFile.toPath()));
+    }
+
+    private static ArrayList<ReturnDocument> readTempTransactionV2(InputStream in) throws Exception {
+        ArrayList<ReturnDocument> returnDocuments = new ArrayList<>();
+        String headerLine;
+        while ((headerLine = readAsciiLine(in)) != null) {
+            if (headerLine.isEmpty()) {
+                continue;
+            }
+            String[] f = headerLine.split("\\|", -1);
+            if (f.length < 9) {
+                throw new Exception("Corrupt temp file header: " + headerLine);
+            }
+            int docId = Integer.parseInt(f[0]);
+            String docInfo = fromB64Field(f[1]);
+            String docURL = fromB64Field(f[2]);
+            String documentHash = f[3];
+            int position = Integer.parseInt(f[4]);
+            int boutLen = Integer.parseInt(f[5]);
+            boolean showAadhaar = Boolean.parseBoolean(f[6]);
+            eSign.Coordinates textPos;
+            try {
+                textPos = eSign.Coordinates.valueOf(f[7]);
+            } catch (IllegalArgumentException ignored) {
+                textPos = eSign.Coordinates.TopLeft;
+            }
+            int payloadLen = Integer.parseInt(f[8]);
+
+            byte[] payload = null;
+            if (payloadLen > 0) {
+                payload = new byte[payloadLen];
+                int off = 0;
+                while (off < payloadLen) {
+                    int n = in.read(payload, off, payloadLen - off);
+                    if (n < 0) {
+                        throw new EOFException("Temp file payload truncated for doc " + docId);
+                    }
+                    off += n;
+                }
+            }
+            eSign.InputType inputType = payloadLen > 0 ? eSign.InputType.PDF : eSign.InputType.HASH;
+            ReturnDocument r = new ReturnDocument("", docId, docInfo, docURL, documentHash, "", inputType, showAadhaar, textPos);
+            if (payload != null) {
+                r.setPreSignedRaw(payload, position, boutLen);
+            }
+            returnDocuments.add(r);
+        }
+        return returnDocuments;
+    }
+
+    private static String readAsciiLine(InputStream in) throws Exception {
+        StringBuilder sb = new StringBuilder(160);
+        int c = in.read();
+        if (c < 0) {
+            return null;
+        }
+        while (c >= 0 && c != '\n') {
+            sb.append((char) c);
+            c = in.read();
+        }
+        return sb.toString();
+    }
+
+    private static String toB64Field(String value) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        return java.util.Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String fromB64Field(String value) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        return new String(java.util.Base64.getDecoder().decode(value), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * @deprecated Legacy format V1 writer input: nests Base64 four levels deep and
+     * builds the whole transaction as one String (~113x the document size on
+     * Java 8). Kept only so old flows/tests can produce V1 data; the SDK now
+     * writes format V2 via {@link #writeTempTransactionFile}.
+     */
+    @Deprecated
     protected static String generateTempTransactionData(ArrayList<ReturnDocument> returnDocuments) throws Exception {
         try {
             String tempData = "";
