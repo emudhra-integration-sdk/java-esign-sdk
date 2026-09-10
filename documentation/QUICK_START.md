@@ -4,6 +4,7 @@ A Java SDK for eMudhra's Aadhaar-based and PAN-based eSign service. Implements *
 
 ## Table of Contents
 
+- [What's New in 5.9](#whats-new-in-59)
 - [Overview](#overview)
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
@@ -33,6 +34,21 @@ A Java SDK for eMudhra's Aadhaar-based and PAN-based eSign service. Implements *
 
 ---
 
+## What's New in 5.9
+
+| Change | Where |
+|---|---|
+| **Signature verification** — verify the returned PKCS#7 against the hash that was sent, read the signer certificate, and check revocation over OCSP with a CRL fallback | [Verifying a Signature](#verifying-a-signature--latest) |
+| **Signature text no longer clipped** — long lines word-wrap before the font shrinks, and the viewer's validity tick no longer overprints the first line | [Auto-fit font sizing](#auto-fit-font-sizing) |
+| **Fractional page coordinates** — `PageLevel` coordinates accept PDF points such as `613.91`, which the renderer already understood but the parser rejected | [PageLevel Mode](#pagelevel-mode) |
+| **`getEncryptedPath()` works without a viewer licence** — the key derives from the ASPID alone, so every constructor sets it | [`getEncryptedPath()`](#getencryptedpath---encrypt-a-file-path) |
+| **Lower pre-sign memory** — the pre-signed PDF is streamed to the temp file as raw bytes instead of four layers of Base64 | internal; no API change |
+
+Upgrading from 5.8 requires no code changes. Temp files written by older versions
+are still readable, so a rolling deployment mid-transaction is safe.
+
+---
+
 ## Overview
 
 The signing process works in two phases:
@@ -56,7 +72,7 @@ Phase 2: User Authentication + getSigedDocument()
 ## Prerequisites
 
 - **Java 8** or higher
-- **eSignASPLibrary5_8.jar** (the SDK JAR from `dist/`)
+- **eSignASPLibrary5_9.jar** (the SDK JAR from `dist/`)
 - **All dependency JARs** from the `lib/` folder:
   - batik-all-1.13.jar
   - commons-io-2.4.jar
@@ -1170,7 +1186,7 @@ Returns `null` when the response carried no certificate or it could not be parse
 
 ## Verifying a Signature — LATEST
 
-**Added after 5.8.** `verifyEsignResponseHash()` checks the PKCS#7 the gateway returned
+**Added in 5.9.** `verifyEsignResponseHash()` checks the PKCS#7 the gateway returned
 against the hash you sent, inspects the signer certificate, and optionally asks the CA
 whether that certificate has been revoked. It is a read-only check — it does not touch
 the PDF and needs no temp file, so it works for hash-mode signing over JSON or any other
@@ -1274,6 +1290,120 @@ the XML is byte-for-byte what the gateway signed — which fails if you re-seria
 pretty-print the response before passing it in. Keep the raw string if you want this check to
 mean anything. A `UserX509Certificate` that disagrees with the PKCS#7 signer, by contrast, *does*
 set an error and fails the result.
+
+### Complete example
+
+A standalone verifier — no signing, no PDF, no SDK instance state beyond the constructor.
+Useful as an audit tool over signatures you stored earlier.
+
+```java
+import com.emudhra.esign.eSign;
+import com.emudhra.esign.eSignVerificationResult;
+import com.emudhra.esign.eSignVerifier;
+
+import java.nio.file.Files;
+import java.nio.file.Paths;
+
+public class VerifyStoredSignature {
+
+    public static void main(String[] args) throws Exception {
+        String aspId      = "YOUR_ASP_ID";
+        String eSignV3Url = "https://gateway.emudhra.com/eSign/V3";
+        String eSignV2Url = "https://gateway.emudhra.com/eSign/V2";
+        String pfxPath    = "C:/certs/asp.pfx";
+        String pfxPass    = "changeit";
+        String pfxAlias   = "aspalias";
+
+        // The two things you stored at signing time.
+        String sha256Hex     = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
+        String esignRespXml  = new String(Files.readAllBytes(Paths.get("response.xml")), "UTF-8");
+
+        eSign sdk = new eSign(aspId, eSignV3Url, eSignV2Url, pfxPath, pfxPass, pfxAlias);
+
+        // Optional: the eMudhra UAT OCSP responder is slow, so cap the wait.
+        eSignVerifier.setHttpTimeouts(5000, 20000);
+
+        eSignVerificationResult v = sdk.verifyEsignResponseHash(sha256Hex, esignRespXml, true);
+
+        System.out.println("Valid              : " + v.isValid());
+        System.out.println("Signature verifies : " + v.isSignatureValid());
+        System.out.println("Hash matches       : " + v.isHashMatched());
+        System.out.println("Signer             : " + v.getSignerSubject());
+        System.out.println("Issuer             : " + v.getIssuerSubject());
+        System.out.println("Serial             : " + v.getSerialNumberHex());
+        System.out.println("Signed at          : " + v.getSigningTime());
+        System.out.println("Cert valid window  : " + v.getCertNotBefore() + " .. " + v.getCertNotAfter());
+        System.out.println("Cert valid then    : " + v.isCertificateTimeValid()
+                                                   + " (checked at " + v.getValidityCheckedAt() + ")");
+        System.out.println("Revocation         : " + v.getRevocationStatus()
+                                                   + " via " + v.getRevocationMethod()
+                                                   + " (" + v.getRevocationSource() + ")");
+        System.out.println("Transaction        : " + v.getTransactionId() + " doc " + v.getDocId());
+        System.out.println("Response XML sig   : " + v.getResponseSignatureValid()
+                                                   + " - " + v.getResponseSignatureNote());
+
+        if (!v.isValid()) {
+            System.out.println("REJECTED: " + v.getErrorMessage());
+        }
+        // Or just print everything at once:
+        System.out.println(v);
+    }
+}
+```
+
+Typical output for a good signature verified long after the OTP certificate expired:
+
+```
+Valid              : true
+Signature verifies : true
+Hash matches       : true
+Signer             : CN=Bavaji J,ST=Karnataka,...
+Signed at          : Mon Sep 08 11:42:17 IST 2026
+Cert valid window  : Mon Sep 08 11:40:02 IST 2026 .. Mon Sep 08 12:10:02 IST 2026
+Cert valid then    : true (checked at Mon Sep 08 11:42:17 IST 2026)
+Revocation         : GOOD via OCSP (http://ocsp.emudhra.com)
+```
+
+Note the certificate had already expired by wall-clock time — `isCertificateTimeValid()` is
+`true` because it was evaluated at the signing time, not now.
+
+### Verifying without the response XML
+
+If you kept only the PKCS#7 (for example `ReturnDocument.getSignedData()` from a hash-mode
+signing), pass it directly. The gateway-response fields stay `null`, everything else works
+the same:
+
+```java
+eSignVerificationResult v = sdk.verifyEsignResponseHash(myOwnSha256Hex, pkcs7Base64, false);
+
+if (v.isValid()) {
+    System.out.println("Signed by " + v.getSignerSubject() + " at " + v.getSigningTime());
+}
+```
+
+### Deciding what to do with the result
+
+`isValid()` is the pass/fail your business logic should key on. Add a stricter revocation
+rule only if your policy needs one:
+
+```java
+eSignVerificationResult v = sdk.verifyEsignResponseHash(hash, respXml, true);
+
+if (!v.isValid()) {
+    throw new IllegalStateException("Signature rejected: " + v.getErrorMessage());
+}
+
+// Stricter than isValid(): demand a positive revocation answer, not merely "not revoked".
+if (v.getRevocationStatus() != eSignVerificationResult.RevocationStatus.GOOD) {
+    throw new IllegalStateException("Revocation status is "
+            + v.getRevocationStatus() + ": " + v.getRevocationMessage());
+}
+
+// Optional: prove the response XML was not altered in transit.
+if (Boolean.FALSE.equals(v.getResponseSignatureValid())) {
+    throw new IllegalStateException("Response XML signature failed: " + v.getResponseSignatureNote());
+}
+```
 
 ### Multi-document responses
 
@@ -1871,7 +2001,7 @@ ant clean jar
 
 The built JAR will be at:
 ```
-dist/eSignASPLibrary5_8.jar
+dist/eSignASPLibrary5_9.jar
 ```
 
 ### Common Build Errors
@@ -1899,4 +2029,4 @@ A JRE is installed instead of a JDK. Install JDK 8 or higher and ensure `JAVA_HO
 
 ### Using the JAR
 
-Once built, add `dist/eSignASPLibrary5_8.jar` and all JARs from the `lib/` folder to your project's classpath.
+Once built, add `dist/eSignASPLibrary5_9.jar` and all JARs from the `lib/` folder to your project's classpath.

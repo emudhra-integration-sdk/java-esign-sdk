@@ -29,7 +29,7 @@ Add the SDK JAR and dependencies to your project. If using Maven with local JARs
     <artifactId>eSignASPLibrary</artifactId>
     <version>5.5</version>
     <scope>system</scope>
-    <systemPath>${project.basedir}/lib/eSignASPLibrary5_8.jar</systemPath>
+    <systemPath>${project.basedir}/lib/eSignASPLibrary5_9.jar</systemPath>
 </dependency>
 <!-- Add all JARs from lib/ similarly, or copy them to a shared lib folder -->
 ```
@@ -1049,7 +1049,7 @@ eSignInput input = eSignInputBuilder.init()
 
 ### Verifying the Returned Signature — LATEST
 
-**Added after 5.8.** Independent of the framework, and independent of the PDF: the check needs
+**Added in 5.9.** Independent of the framework, and independent of the PDF: the check needs
 only the hash that was sent and the gateway's response, so it works identically in a Spring Boot
 `@PostMapping`, a servlet `doPost`, or a console main. Nothing is written and no temp file is
 read, which makes it safe to run on the callback thread — except for the revocation lookup, which
