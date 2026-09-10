@@ -18,6 +18,7 @@ A Java SDK for eMudhra's Aadhaar-based and PAN-based eSign service. Implements *
 - [Aadhaar Appearance Patching](#aadhaar-appearance-patching)
 - [Customising the Aadhaar Appearance](#customising-the-aadhaar-appearance--latest) — **LATEST**
 - [Signer Certificate Details](#signer-certificate-details--latest) — **LATEST**
+- [Verifying a Signature](#verifying-a-signature--latest) — **LATEST**
 - [Signature Content Position](#signature-content-position)
 - [API Reference](#api-reference)
   - [Constructors](#constructors)
@@ -690,7 +691,9 @@ Sign specific pages (comma-separated) at the position defined by `setCoordinates
 
 ### PageLevel Mode
 
-Define custom coordinates per page. Format: `pageNum-x1,y1,x2,y2` separated by semicolons:
+Define custom coordinates per page. Format: `pageNum-x1,y1,x2,y2` separated by semicolons.
+Coordinates are PDF points and may be fractional (`1-100.5,100,300.25,200`); the page number
+must be a whole number:
 
 ```java
 .setPageTobeSigned(eSign.PageTobeSigned.PageLevel)
@@ -864,7 +867,14 @@ The font size is computed dynamically so all lines fit within the signature box:
 - **Width constraint** — each line is measured with the metrics of the face actually being drawn; the font is scaled down if any line would exceed the box width
 - **Clamped** to a minimum of 4 pt and maximum of 10 pt for readability
 
-This ensures the text never overflows the signature box regardless of box dimensions or text length. Set `setFontSize(...)` on a custom appearance to fix the size and bypass auto-fit entirely.
+- **Word wrapping** — a line too wide for the box is wrapped at word boundaries before the font
+  is reduced, so one long line no longer shrinks the whole block to an unreadable size. A single
+  word wider than the box is broken by characters. If the wrapped lines are still too tall, the
+  font steps down (to a 4 pt floor) rather than lines being dropped.
+- **Legacy-tick layout** — when the appearance uses the older layer set, the top 30% of the box
+  is left free for the PDF viewer's own validity header, so it no longer overprints the first line.
+
+This ensures the text never overflows the signature box regardless of box dimensions or text length. Set `setFontSize(...)` on a custom appearance to fix the size and bypass auto-fit entirely — an explicit size is treated as the *maximum*, and is still reduced if the text cannot otherwise fit.
 
 ### Default behaviour (when not set / set to false)
 
@@ -1158,6 +1168,130 @@ Returns `null` when the response carried no certificate or it could not be parse
 
 ---
 
+## Verifying a Signature — LATEST
+
+**Added after 5.8.** `verifyEsignResponseHash()` checks the PKCS#7 the gateway returned
+against the hash you sent, inspects the signer certificate, and optionally asks the CA
+whether that certificate has been revoked. It is a read-only check — it does not touch
+the PDF and needs no temp file, so it works for hash-mode signing over JSON or any other
+payload just as well as for PDF signing.
+
+```java
+eSignVerificationResult v = esignObj.verifyEsignResponseHash(
+        sha256Hex,      // the hash that was sent for signing
+        esignRespXml,   // the gateway's EsignResp XML, or a bare Base64 PKCS#7
+        true);          // check revocation (OCSP, then CRL)
+
+if (v.isValid()) {
+    System.out.println("Signed by  " + v.getSignerSubject());
+    System.out.println("At         " + v.getSigningTime());
+    System.out.println("Revocation " + v.getRevocationStatus());
+} else {
+    System.out.println("Not valid: " + v.getErrorMessage());
+}
+```
+
+### Parameters
+
+| Parameter | Description |
+|---|---|
+| `sha256Hex` | The SHA-256 hex that was sent for signing. In hash mode this is your own digest; for a PDF signing it is `ReturnDocument.getDocumentHash()`. |
+| `esignRespXml` | The gateway's `EsignResp` XML — the same string you pass to `getSigedDocument()`. A bare Base64 or PEM PKCS#7 is also accepted (anything not starting with `<` is treated as PKCS#7), so `ReturnDocument.getSignedData()` or a single `DocSignature` value works too. |
+| `checkRevocation` | `true` queries OCSP and falls back to CRL. This adds a network round trip — the eMudhra UAT responder takes roughly 20 seconds. `false` skips it and leaves the status `NOT_CHECKED`. |
+
+The method **never throws**. Every failure — malformed XML, a non-success `status`, an empty
+`DocSignature`, a network problem — comes back as `isValid() == false` with the reason in
+`getErrorMessage()`.
+
+### What `isValid()` means
+
+```
+signatureValid && hashMatched && certificateTimeValid
+    && revocationStatus != REVOKED && errorMessage == null
+```
+
+A revocation status of `NOT_CHECKED` or `UNKNOWN` does **not** make the result invalid. If your
+policy demands a positive revocation answer, test `getRevocationStatus() == GOOD` yourself.
+
+> **Certificate validity is checked at signing time, not now.** eSign OTP certificates are
+> issued for roughly 30 minutes, so by the time anyone verifies, the certificate has almost
+> always expired. The SDK therefore evaluates the validity window against the CMS signing time
+> when the PKCS#7 carries one, and against the current time otherwise.
+> `getValidityCheckedAt()` tells you which instant was used.
+
+### Result fields
+
+**Signature**
+
+| Getter | Type | Description |
+|---|---|---|
+| `isValid()` | boolean | The single success flag — see above |
+| `isSignatureValid()` | boolean | The CMS signature verifies against the signer's public key |
+| `isHashMatched()` | boolean | The signed `messageDigest` equals `sha256Hex` |
+| `getExpectedDigestHex()` | String | The hash you passed in |
+| `getMessageDigestHex()` | String | The digest actually signed |
+| `getDigestAlgorithm()` | String | e.g. `SHA-256` |
+| `getSigningTime()` | Date | CMS signing-time attribute; null when absent |
+| `getErrorMessage()` | String | Why the result is not valid; null on success |
+
+**Signer certificate**
+
+| Getter | Type | Description |
+|---|---|---|
+| `getSignerCertificate()` | X509Certificate | The certificate inside the PKCS#7 |
+| `getIssuerCertificate()` | X509Certificate | Issuer, from the PKCS#7 or downloaded via the AIA extension |
+| `getSignerSubject()` / `getIssuerSubject()` | String | Distinguished names |
+| `getSerialNumberHex()` | String | Serial number, hex |
+| `getCertNotBefore()` / `getCertNotAfter()` | Date | Validity window |
+| `isCertificateTimeValid()` | boolean | Whether the certificate was inside that window at `getValidityCheckedAt()` |
+| `getValidityCheckedAt()` | Date | The instant used — signing time when present, otherwise now |
+
+**Revocation**
+
+| Getter | Type | Description |
+|---|---|---|
+| `getRevocationStatus()` | enum | `GOOD`, `REVOKED`, `UNKNOWN`, `NOT_CHECKED` |
+| `getRevocationMethod()` | String | `"OCSP"` or `"CRL"`; null when not checked |
+| `getRevocationSource()` | String | The responder or CRL URL that answered |
+| `getRevocationCheckedAt()` | Date | When the check ran |
+| `getRevocationTime()` | Date | When the certificate was revoked, if it was |
+| `getRevocationMessage()` | String | Note explaining an `UNKNOWN` result |
+
+**Gateway response** (populated only when the input was `EsignResp` XML)
+
+| Getter | Type | Description |
+|---|---|---|
+| `getTransactionId()` | String | `EsignResp/@txn` |
+| `getResponseTimestamp()` | String | `EsignResp/@ts` |
+| `getResponseStatus()` | String | `EsignResp/@status` — `"1"` is success |
+| `getDocId()` | String | Which `DocSignature` was verified |
+| `getResponseSignatureValid()` | Boolean | Whether the gateway's enveloped XML signature verifies; `null` when absent or not evaluable |
+| `getResponseSignatureNote()` | String | Explains the above |
+| `getUserCertificateMatches()` | Boolean | Whether `UserX509Certificate` equals the PKCS#7 signer certificate; `null` when not compared |
+
+`getResponseSignatureValid()` is **advisory** and deliberately not part of `isValid()`. It proves
+the XML is byte-for-byte what the gateway signed — which fails if you re-serialise or
+pretty-print the response before passing it in. Keep the raw string if you want this check to
+mean anything. A `UserX509Certificate` that disagrees with the PKCS#7 signer, by contrast, *does*
+set an error and fails the result.
+
+### Multi-document responses
+
+When the response carries several `DocSignature` elements, the SDK picks the one whose signed
+digest equals `sha256Hex`, so you do not have to pass a document id. Call the method once per
+hash.
+
+### Network timeouts
+
+OCSP, CRL and CA-issuer downloads default to a 15-second connect and 45-second read timeout.
+Adjust them globally — the setting is static and applies to every verification in the JVM:
+
+```java
+eSignVerifier.setHttpTimeouts(5000, 20000);   // connect ms, read ms
+```
+
+---
+
 ## Signature Content Position
 
 `setTextContentPosition(eSign.Coordinates)` controls where text is anchored inside the signature box. It works for `StandardSignature`, `OneLiner`, and the Aadhaar patch appearance. It has no effect on image-based types (`SignatureImage`, `advanceSignature`, `ColoredGraphic`, `BackgroundImage`).
@@ -1280,7 +1414,7 @@ new eSign(ASPID, eSignURL, eSignURLV2, pfxpath, password, pfxAlias,
 | `logType` | eSignSettings.LogType | Logging level (AllLog, NoDebugLog, NoLog) |
 | `ProxyUserID` | String | Proxy authentication username |
 | `ProxyUserPassword` | String | Proxy authentication password |
-| `pdfViewerLicence` | String | PDF viewer licence key |
+| `pdfViewerLicence` | String | Optional emPDFViewer kit licence file. Pass `null` — path encryption no longer depends on it |
 | `SignatureContents` | int | Reserved space for signature in bytes (0 = default 21000) |
 
 ---
@@ -1378,6 +1512,25 @@ eSignServiceReturn getEncryptedPath(String path)
 ```
 
 **Returns:** `eSignServiceReturn` with `getEnCryptedPath()` containing the encrypted path string.
+
+---
+
+#### `verifyEsignResponseHash()` - Verify a returned signature
+
+```java
+eSignVerificationResult verifyEsignResponseHash(
+    String sha256Hex,
+    String esignRespXml,
+    boolean checkRevocation
+)
+```
+
+Verifies the PKCS#7 returned by the gateway against the hash that was sent, reports the signer
+certificate, and optionally checks revocation over OCSP with a CRL fallback. Never throws —
+inspect `isValid()` and `getErrorMessage()`. See
+[Verifying a Signature](#verifying-a-signature--latest) for the full field list.
+
+**Returns:** `eSignVerificationResult`.
 
 ---
 

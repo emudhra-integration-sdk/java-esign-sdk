@@ -145,7 +145,27 @@ public class eSign {
         eSignSettings.setESIGNURL(eSignURL);
         eSignSettings.setESIGNURLV2(eSignURLV2);
 
+        // The path-encryption key derives from the ASPID alone. Set it always,
+        // so getEncryptedPath() and the PDF viewer kit work without a separate
+        // viewer licence file.
         eSignSettings.setEncryptionKey(getSha256("PDF_VIEWER_KIT_101" + ASPID));
+
+        if (pdfViewerLicence != null) {
+            // Backward compatibility: older emPDFViewer kits gate on
+            // ValidateKitLicence.IsValidLicence(), populated only by
+            // validateKitLicence(file). Keep honoring a supplied licence file.
+            // Reflection, because the class ships as a compiled artifact and
+            // must not be a compile-time dependency.
+            try {
+                java.lang.reflect.Method validate = Class
+                        .forName("com.emudhra.esign.ValidateKitLicence")
+                        .getDeclaredMethod("validateKitLicence", String.class);
+                validate.setAccessible(true);
+                validate.invoke(null, pdfViewerLicence);
+            } catch (Throwable t) {
+                logger.warning("PDF viewer kit licence validation skipped: " + t);
+            }
+        }
     }
 
     @Deprecated
@@ -210,5 +230,24 @@ public class eSign {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
         return Hex.toHexString(hash);
+    }
+
+    /**
+     * Verifies the eSign signature over data you hashed yourself, and checks the signer
+     * certificate for revocation via OCSP, falling back to CRL.
+     *
+     * @param sha256Hex      the SHA-256 hex that was sent for signing: your own digest in hash
+     *                       mode, or ReturnDocument.getDocumentHash() for a PDF signing.
+     * @param esignRespXml   the gateway's EsignResp XML (the same string passed to
+     *                       getSigedDocument), or just the Base64 PKCS#7 from
+     *                       ReturnDocument.getSignedData() / a DocSignature element.
+     * @param checkRevocation whether to query OCSP (then CRL). Adds a network round trip;
+     *                       the eMudhra UAT responder takes roughly 20 seconds.
+     * @return the outcome; never throws. isValid() is the single success flag, and
+     *         getErrorMessage() says why when it is false. When the response XML carries
+     *         several documents, the DocSignature matching sha256Hex is the one verified.
+     */
+    public eSignVerificationResult verifyEsignResponseHash(String sha256Hex, String esignRespXml, boolean checkRevocation) {
+        return eSignVerifier.verifyResponseHash(sha256Hex, esignRespXml, checkRevocation);
     }
 }
