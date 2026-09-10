@@ -749,7 +749,8 @@ public final class eSignImplimentation {
                                 // to skip its own layer2 rendering and leave only our content.
                                 if (textLayerLines != null && !textLayerLines.isEmpty()) {
                                     drawTextOnLayer2(appearance.getLayer(2), textLayerLines,
-                                            input.getTextContentPosition(), textLayerFontSize);
+                                            input.getTextContentPosition(), textLayerFontSize,
+                                            !appearance.isAcro6Layers());
                                 }
 
                                 //Signature Border
@@ -1268,16 +1269,27 @@ public final class eSignImplimentation {
     /**
      * Draws text lines directly on a signature layer2 PdfTemplate at the position
      * specified by contentPosition within the signature box.
+     *
+     * Text that fits the box is drawn exactly as before. Only when a line is wider
+     * than the box, or the lines are taller than the box, are lines word-wrapped
+     * and the font reduced (an explicit font size is treated as the maximum; the
+     * floor is 4pt) so the block stays inside the box instead of being clipped,
+     * shrunk to an unreadable size by one long line, or losing lines.
+     *
+     * In legacy-layer (tick) mode the top 30% of the box is left free for the
+     * viewer's validity header - the same TOP_SECTION split iText's own layer-2
+     * layout uses - so the header no longer overprints the first text line.
      */
     private static void drawTextOnLayer2(PdfTemplate layer2, List<String> lines,
-            eSign.Coordinates contentPosition, float explicitFontSize) throws Exception {
+            eSign.Coordinates contentPosition, float explicitFontSize, boolean reserveTopSection) throws Exception {
         if (lines == null || lines.isEmpty()) return;
         if (contentPosition == null) contentPosition = eSign.Coordinates.TopLeft;
 
         float w = layer2.getWidth();
         float h = layer2.getHeight();
         final float lm = 4f, rm = 4f, tm = 3f, bm = 3f;
-        float aw = w - lm - rm, ah = h - tm - bm;
+        float regionH = reserveTopSection ? h * 0.7f : h;   // iText TOP_SECTION = 0.3
+        float aw = w - lm - rm, ah = regionH - tm - bm;
         int n = lines.size();
 
         BaseFont bf = BaseFont.createFont(BaseFont.HELVETICA, BaseFont.CP1252, BaseFont.NOT_EMBEDDED);
@@ -1286,17 +1298,28 @@ public final class eSignImplimentation {
         if (explicitFontSize > 0) {
             fontSize = explicitFontSize;
         } else {
-            fontSize = n > 0 ? ah / n : 8f;
-            for (String line : lines) {
-                float lw = bf.getWidthPoint(line, fontSize);
-                if (lw > aw && lw > 0) fontSize = Math.min(fontSize, fontSize * aw / lw);
-            }
-            fontSize = Math.max(4f, Math.min(fontSize, 10f));
+            fontSize = Math.max(4f, Math.min(n > 0 ? ah / n : 8f, 10f));
         }
+
+        List<String> drawLines = lines;
+        if (!fitsBox(bf, lines, fontSize, aw, ah)) {
+            drawLines = wrapLines(bf, lines, fontSize, aw);
+            // Still too tall after wrapping: reduce the size (an explicit size acts as
+            // the maximum) down to 4pt rather than dropping the client's text.
+            for (int pass = 0; pass < 6 && drawLines.size() * fontSize > ah + 0.01f && fontSize > 4f; pass++) {
+                fontSize = Math.max(4f, ah / drawLines.size());
+                drawLines = wrapLines(bf, lines, fontSize, aw);
+            }
+            int maxLines = Math.max(1, (int) Math.floor((ah + 0.01f) / fontSize));
+            if (drawLines.size() > maxLines) {
+                drawLines = new ArrayList<>(drawLines.subList(0, maxLines));
+            }
+        }
+        n = drawLines.size();
         float leading = fontSize;
 
         float maxLW = 0f;
-        for (String line : lines) maxLW = Math.max(maxLW, bf.getWidthPoint(line, fontSize));
+        for (String line : drawLines) maxLW = Math.max(maxLW, bf.getWidthPoint(line, fontSize));
         if (maxLW == 0f) maxLW = aw;
 
         float startY;
@@ -1305,10 +1328,10 @@ public final class eSignImplimentation {
                 startY = bm + (n - 1) * leading;
                 break;
             case CenterLeft: case CenterMiddle: case CenterRight:
-                startY = (h + fontSize * (n - 2)) / 2f;
+                startY = (regionH + fontSize * (n - 2)) / 2f;
                 break;
             default:
-                startY = h - tm - fontSize;
+                startY = regionH - tm - fontSize;
         }
 
         float startX;
@@ -1327,9 +1350,52 @@ public final class eSignImplimentation {
         layer2.setFontAndSize(bf, fontSize);
         for (int i = 0; i < n; i++) {
             layer2.setTextMatrix(1f, 0f, 0f, 1f, startX, startY - i * leading);
-            layer2.showText(lines.get(i));
+            layer2.showText(drawLines.get(i));
         }
         layer2.endText();
+    }
+
+    /** True when every line fits the width and all lines fit the height at this size. */
+    private static boolean fitsBox(BaseFont bf, List<String> lines, float fontSize, float aw, float ah) {
+        if (lines.size() * fontSize > ah + 0.01f) return false;
+        for (String line : lines) {
+            if (bf.getWidthPoint(line, fontSize) > aw + 0.01f) return false;
+        }
+        return true;
+    }
+
+    /** Word-wraps each line to maxWidth; a single token wider than the box is broken by characters. */
+    private static List<String> wrapLines(BaseFont bf, List<String> lines, float fontSize, float maxWidth) {
+        List<String> out = new ArrayList<>();
+        for (String line : lines) {
+            if (bf.getWidthPoint(line, fontSize) <= maxWidth) {
+                out.add(line);
+                continue;
+            }
+            StringBuilder cur = new StringBuilder();
+            for (String word : line.split(" ")) {
+                if (word.isEmpty()) continue;
+                String candidate = cur.length() == 0 ? word : cur + " " + word;
+                if (bf.getWidthPoint(candidate, fontSize) <= maxWidth) {
+                    cur.setLength(0);
+                    cur.append(candidate);
+                    continue;
+                }
+                if (cur.length() > 0) {
+                    out.add(cur.toString());
+                    cur.setLength(0);
+                }
+                while (bf.getWidthPoint(word, fontSize) > maxWidth && word.length() > 1) {
+                    int cut = word.length() - 1;
+                    while (cut > 1 && bf.getWidthPoint(word.substring(0, cut), fontSize) > maxWidth) cut--;
+                    out.add(word.substring(0, cut));
+                    word = word.substring(cut);
+                }
+                cur.append(word);
+            }
+            if (cur.length() > 0) out.add(cur.toString());
+        }
+        return out;
     }
 
     /**

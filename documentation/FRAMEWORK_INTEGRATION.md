@@ -13,6 +13,7 @@ This guide shows how to integrate the eSign Java SDK into common Java web framew
 - [Plain Java (Console)](#plain-java-console)
 - [Encrypted Aadhaar Flow — Spring Boot Example](#encrypted-aadhaar-flow--spring-boot-example)
 - [Common Patterns](#common-patterns)
+  - [Verifying the Returned Signature](#verifying-the-returned-signature--latest) — **LATEST**
 
 ---
 
@@ -1043,6 +1044,52 @@ eSignInput input = eSignInputBuilder.init()
     // ... other settings
     .build();
 ```
+
+---
+
+### Verifying the Returned Signature — LATEST
+
+**Added after 5.8.** Independent of the framework, and independent of the PDF: the check needs
+only the hash that was sent and the gateway's response, so it works identically in a Spring Boot
+`@PostMapping`, a servlet `doPost`, or a console main. Nothing is written and no temp file is
+read, which makes it safe to run on the callback thread — except for the revocation lookup, which
+is a network call.
+
+```java
+// In the Phase 2 callback, alongside getSigedDocument(...)
+String esignRespXml = request.getParameter("eSignResponse");
+
+eSignServiceReturn signed = esignObj.getSigedDocument(esignRespXml, tempFile);
+ReturnDocument doc = signed.getReturnDocuments().get(0);
+
+eSignVerificationResult v = esignObj.verifyEsignResponseHash(
+        doc.getDocumentHash(),   // the hash that was sent for this document
+        esignRespXml,            // the raw response string, not re-serialised
+        true);                   // OCSP, then CRL
+
+if (!v.isValid()) {
+    log.warn("Signature did not verify for txn {}: {}", v.getTransactionId(), v.getErrorMessage());
+} else {
+    log.info("Verified: signer={} signedAt={} revocation={} via {}",
+            v.getSignerSubject(), v.getSigningTime(),
+            v.getRevocationStatus(), v.getRevocationMethod());
+}
+```
+
+Three things worth knowing before you wire this into a request thread:
+
+- **Revocation costs a round trip.** The eMudhra UAT OCSP responder takes roughly 20 seconds.
+  Either pass `false` and verify asynchronously, or shorten the timeouts with
+  `eSignVerifier.setHttpTimeouts(connectMs, readMs)` (defaults: 15 s / 45 s, static for the JVM).
+- **Pass the response string untouched.** `getResponseSignatureValid()` validates the gateway's
+  enveloped XML signature, so any re-serialisation or pretty-printing between receiving and
+  verifying will make that check fail. It is advisory and does not affect `isValid()`, but it is
+  the only field that can tell you the XML was tampered with in transit.
+- **In hash mode there is no `ReturnDocument`.** Pass the digest you computed yourself, and
+  either the response XML or the Base64 PKCS#7 from `ReturnDocument.getSignedData()`.
+
+For the complete field list, see
+[Verifying a Signature](QUICK_START.md#verifying-a-signature--latest) in QUICK_START.md.
 
 ---
 

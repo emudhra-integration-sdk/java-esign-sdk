@@ -32,6 +32,7 @@ A Java SDK for integrating eMudhra's Aadhaar-based and PAN-based eSign service i
 - **Signature Appearance Patching** — Automatically updates the visual appearance of signed signature fields with the signer's name and masked Aadhaar number extracted from the gateway-returned certificate
 - **LATEST: Customisable Aadhaar Appearance** — Define the signature block yourself with `AadhaarSignatureAppearance`: placeholder-based custom content (`{name}`, `{aadhaar}`, `{reason}`, `{location}`, `{date}`), an on/off switch for the Aadhaar number, per-field labels and ordering, date format and timezone, italic/bold, colour, size and margins
 - **LATEST: Signer Certificate Details** — `eSignServiceReturn.getSignerCertificateInfo()` exposes the parsed gateway certificate: signer CN, Aadhaar number, issuer, serial, validity, algorithm, key size and SHA-256 thumbprint
+- **LATEST: Signature Verification** — `verifyEsignResponseHash()` verifies the returned PKCS#7 against the hash that was sent, reports the signer certificate, and checks revocation over OCSP with a CRL fallback. Works for hash-mode signing over any payload, not just PDFs
 
 ## Prerequisites
 

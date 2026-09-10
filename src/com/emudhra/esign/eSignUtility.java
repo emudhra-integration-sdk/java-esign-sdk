@@ -416,10 +416,13 @@ public final class eSignUtility {
             int pageNumber = Integer.parseInt(signature[0]);
             String position = signature[1];
             String[] rect = position.split(",");
-            int x1 = Integer.parseInt(rect[0]);
-            int y1 = Integer.parseInt(rect[1]);
-            int x2 = Integer.parseInt(rect[2]);
-            int y2 = Integer.parseInt(rect[3]);
+            // Coordinates are PDF points and may be fractional (e.g. 613.91);
+            // the renderer already reads them with Float.valueOf. Page number
+            // stays an int. The page-bounds check below is unchanged.
+            float x1 = Float.parseFloat(rect[0]);
+            float y1 = Float.parseFloat(rect[1]);
+            float x2 = Float.parseFloat(rect[2]);
+            float y2 = Float.parseFloat(rect[3]);
             Rectangle r = reader.getPageSizeWithRotation(pageNumber);
             if (isContentSearch) {
                 if (!(r.getWidth() >= x1 && r.getWidth() >= x2 && r.getHeight() >= y1 && r.getHeight() >= y2)) {
