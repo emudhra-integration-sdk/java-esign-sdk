@@ -13,6 +13,7 @@ This guide shows how to integrate the eSign Java SDK into common Java web framew
 - [Plain Java (Console)](#plain-java-console)
 - [Encrypted Aadhaar Flow — Spring Boot Example](#encrypted-aadhaar-flow--spring-boot-example)
 - [Common Patterns](#common-patterns)
+  - [Branding the Aadhaar Page with custUI](#branding-the-aadhaar-page-with-custui)
   - [Verifying the Returned Signature](#verifying-the-returned-signature--latest) — **LATEST**
 
 ---
@@ -1044,6 +1045,48 @@ eSignInput input = eSignInputBuilder.init()
     // ... other settings
     .build();
 ```
+
+---
+
+### Branding the Aadhaar Page with custUI
+
+`custUI` is a gateway parameter, not an SDK call: you add it to the same form post or
+redirect that carries `XML`. Build it wherever you build the redirect — the pattern is
+identical in Spring Boot, Servlet, JSP and Struts.
+
+```java
+@PostMapping("/sign")
+public String sign(Model model) throws Exception {
+    eSignServiceReturn result = esignObj.getGatewayParameter(/* ... */);
+
+    String custUiJson = new JSONObject()
+            .put("userAadhaarLast4Digit", last4)   // gateway stops signing on mismatch
+            .put("buttonColour", "#f76618")   // keep the '#': see QUICK_START
+            .put("headerColour", "#0171c9")
+            .put("logoURL", "https://cdn.example.com/brand/logo.png")
+            .toString();
+
+    model.addAttribute("gatewayParam", result.getGatewayParameter());
+    model.addAttribute("custUI", Base64.getEncoder()
+            .encodeToString(custUiJson.getBytes(StandardCharsets.UTF_8)));
+    return "esign-redirect";   // auto-submitting form with XML + custUI
+}
+```
+
+`userAadhaarLast4Digit` is an enforcement control, not decoration: the gateway compares
+it against the Aadhaar the signer types and stops the signing if they differ. Validate
+`last4` yourself — anything that is not exactly four digits is silently blanked, which
+turns the check off rather than failing the request:
+
+```java
+if (last4 == null || !last4.matches("\\d{4}")) {
+    throw new IllegalArgumentException("last4 must be exactly 4 digits");
+}
+```
+
+The colour and logo fields are cosmetic and fall back to the default orange button,
+blue header and no logo. Full field list, validation rules and pitfalls are in
+[Customising the Aadhaar Page (custUI)](QUICK_START.md#customising-the-aadhaar-page-custui).
 
 ---
 

@@ -92,6 +92,7 @@ See the [full Quick Start guide](documentation/QUICK_START.md) for the complete 
 | [Quick Start](documentation/QUICK_START.md) | SDK overview, signing flows, API reference, enums, and error codes |
 | [Framework Integration](documentation/FRAMEWORK_INTEGRATION.md) | Ready-to-use examples for Spring Boot, Servlet, JSP, Struts, and plain Java |
 | [Logging Configuration](documentation/LOGGING_USAGE.md) | Log levels, file location, rotation, and configuration examples |
+| [Customising the Aadhaar Page (`custUI`)](documentation/QUICK_START.md#customising-the-aadhaar-page-custui) | Brand the gateway's Aadhaar page, and restrict which Aadhaar may complete the signing |
 
 ## Building from Source
 

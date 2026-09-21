@@ -13,6 +13,7 @@ A Java SDK for eMudhra's Aadhaar-based and PAN-based eSign service. Implements *
   - [Aadhaar Signing (V2 API)](#aadhaar-signing-v2-api)
   - [PAN Signing (V3 API)](#pan-signing-v3-api)
   - [Encrypted Aadhaar Flow](#encrypted-aadhaar-flow)
+- [Customising the Aadhaar Page (custUI)](#customising-the-aadhaar-page-custui)
 - [Signature Appearance Types](#signature-appearance-types)
 - [Page Selection and Coordinates](#page-selection-and-coordinates)
 - [Multi-Document Signing](#multi-document-signing)
@@ -484,6 +485,10 @@ response.sendRedirect(redirectUrl);
 
 > **Note:** The `gatewayParameter` is already URL-encoded by the SDK, so no additional encoding is needed for Option B.
 
+To brand this page — header and button colour, your logo, the signer's last four
+Aadhaar digits — add a `custUI` parameter beside `XML`. See
+[Customising the Aadhaar Page (custUI)](#customising-the-aadhaar-page-custui).
+
 ---
 
 The user will see the authentication page with Aadhaar pre-filled and only needs to complete OTP / Fingerprint / IRIS authentication.
@@ -531,6 +536,114 @@ The SDK validates your inputs before building the wrapper XML:
 - Both `setEncryptedAadhaarFlowEnabled(true)` **and** `setEncryptedAadhaarConfig(...)` must be set. Setting only the config without enabling the flag leaves the SDK in the standard flow.
 - The Aadhaar number is encrypted using **RSA/ECB/PKCS1Padding** with the UIDAI-provided X.509 certificate's public key — the same algorithm used by the UIDAI decryption service.
 - The `getPreSignedTempFile()` path must still be persisted in your session and passed to `getSigedDocument()` in Phase 2, exactly as in the standard flow.
+
+---
+
+## Customising the Aadhaar Page (custUI)
+
+`custUI` controls the eMudhra Aadhaar authentication page — the page the signer lands
+on after you post the `gatewayParameter`. It brands the page, and it can also restrict
+*which* Aadhaar is allowed to complete the signing. You send a small JSON object,
+Base64 encoded, alongside the `XML` field.
+
+> **This is a gateway parameter, not an SDK feature.** The SDK neither builds nor
+> validates it, and there is no builder method for it. You add it yourself to the same
+> form post or redirect that carries `XML`. It applies to the Aadhaar (V2) page.
+
+### The JSON
+
+```json
+{
+  "userAadhaarLast4Digit": "1234",
+  "buttonColour": "#f76618",
+  "headerColour": "#0171c9",
+  "logoURL": "https://cdn.example.com/brand/logo.png"
+}
+```
+
+| Key | Purpose | Accepted | Default when rejected |
+|---|---|---|---|
+| `userAadhaarLast4Digit` | Binds the session to one Aadhaar: the gateway checks the number the signer enters against these digits and **stops the signing on mismatch** | Exactly 4 characters, all digits | blank — no check is applied |
+| `buttonColour` | Primary button colour | 3- or 6-digit hex, e.g. `#f76618`, `f76618`, `#f00` | `#f76618` |
+| `headerColour` | Page header colour | same as above | `#0171c9` |
+| `logoURL` | Your logo, fetched by the signer's browser | Must begin `http://` or `https://` | logo not shown |
+
+Every field is optional. Send only the ones you want to change. The three colour and
+logo fields are cosmetic; `userAadhaarLast4Digit` is not — see below.
+
+### Binding the session to one Aadhaar
+
+`userAadhaarLast4Digit` is the only field that changes *behaviour* rather than appearance.
+Send four valid digits and the gateway compares them against the Aadhaar the signer types
+on the page; if the two do not match, **the signing is stopped**. Use it whenever you
+already know which Aadhaar holder is meant to sign — it stops a link intended for one
+signer being completed by somebody else.
+
+Omit the field and the page accepts any Aadhaar, exactly as before.
+
+> **A malformed value turns the check off, silently.** The digits are validated before
+> use, and anything that is not exactly four digits is replaced with a blank — which
+> means no comparison is performed, signing proceeds unrestricted, and nothing is
+> reported. If you depend on this as a control, assert that your value is four digits
+> in your own code before you encode it; do not assume the gateway will tell you.
+
+### Sending it
+
+Base64-encode the JSON, then add it as a second parameter next to `XML`.
+
+```java
+String custUiJson = "{"
+        + "\"userAadhaarLast4Digit\":\"1234\","
+        + "\"buttonColour\":\"#f76618\","
+        + "\"headerColour\":\"#0171c9\","
+        + "\"logoURL\":\"https://cdn.example.com/brand/logo.png\""
+        + "}";
+
+String custUI = Base64.getEncoder()
+        .encodeToString(custUiJson.getBytes(StandardCharsets.UTF_8));
+```
+
+**Option A — form POST** (the browser handles encoding):
+
+```html
+<form id="esignForm" action="https://authenticate.sandbox.emudhra.com/AadhaareSign.jsp"
+      method="POST">
+    <input type="hidden" name="XML"    value="${gatewayParam}" />
+    <input type="hidden" name="custUI" value="${custUI}" />
+</form>
+```
+
+**Option B — URL redirect.** Base64 contains `+`, `/` and `=`, which are not safe in a
+query string, so URL-encode `custUI` yourself. (`XML` is already encoded by the SDK;
+`custUI` is not, because the SDK never sees it.)
+
+```java
+String redirectUrl = gatewayUrl
+        + "?XML=" + result.getGatewayParameter()
+        + "&custUI=" + URLEncoder.encode(custUI, "UTF-8");
+```
+
+### Things that will catch you out
+
+- **Send the `#` on 3-digit hex.** A `#` is added automatically only when the value is
+  *exactly six characters*, so `f76618` becomes `#f76618` — but `f00` is left as-is,
+  fails validation, and silently reverts to the default. `#f00` works. Sending the `#`
+  every time is the safe habit.
+- **The colour keys are British spelling** — `buttonColour` and `headerColour`, while
+  `logoURL` and `userAadhaarLast4Digit` are not. A misspelled key is simply ignored.
+- **Bad input never fails loudly.** An invalid colour, a malformed logo URL, or JSON
+  that will not parse at all are absorbed: the page falls back to the orange button,
+  blue header and no logo, and signing proceeds. If your branding "did not apply",
+  there is no error to find — check the encoding and the key spelling first. The same
+  leniency is what makes a malformed `userAadhaarLast4Digit` dangerous: it does not
+  reject the request, it just stops enforcing the Aadhaar match.
+- **`logoURL` is only checked for its scheme.** Anything starting `http://` or
+  `https://` is accepted, so a typo or an unreachable host still passes validation and
+  renders as a broken image. The signer's browser fetches it directly, so it must be
+  publicly reachable and served over HTTPS to avoid mixed-content warnings.
+- **`userAadhaarLast4Digit` must be exactly four digits.** Five characters, a space, or
+  a masked form like `**1234` is dropped — and dropping it disables the Aadhaar match,
+  so the restriction you thought you had applied is simply not there.
 
 ---
 
