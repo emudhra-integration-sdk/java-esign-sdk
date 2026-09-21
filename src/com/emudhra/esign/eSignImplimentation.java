@@ -27,8 +27,8 @@ import esign.text.pdf.PdfString;
 import esign.text.pdf.AcroFields;
 import esign.text.pdf.PdfArray;
 import esign.text.pdf.PdfIndirectObject;
+import esign.text.pdf.PRIndirectReference;
 import esign.text.pdf.PRStream;
-import esign.text.pdf.PdfBoolean;
 import esign.text.pdf.PdfTemplate;
 import esign.text.pdf.SignatureAppearanceCreator;
 import org.emcastle.asn1.x500.RDN;
@@ -1399,9 +1399,27 @@ public final class eSignImplimentation {
     }
 
     /**
-     * Patches the visual appearance of every signature field in a signed PDF
-     * so that it displays signer name and masked Aadhaar number, equivalent to
-     * the C# PatchSignatureAppearance method.
+     * Object number of a signature field's /V signature dictionary, or -1 when it is
+     * not an indirect reference. Fields sharing a number were produced by one signing.
+     */
+    private static int signatureValueNumber(AcroFields acroFields, String fieldName) {
+        try {
+            AcroFields.Item item = acroFields.getFieldItem(fieldName);
+            if (item == null || item.size() == 0) return -1;
+            PdfObject v = item.getMerged(0).get(PdfName.V);
+            return (v instanceof PRIndirectReference) ? ((PRIndirectReference) v).getNumber() : -1;
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    /**
+     * Patches the visual appearance of the signature field(s) added by the current
+     * signing round so they display the signer name and masked Aadhaar number,
+     * equivalent to the C# PatchSignatureAppearance method.
+     *
+     * <p>Blocks belonging to earlier signers of a co-signed document are left
+     * untouched: each was drawn from its own signer's certificate.
      *
      * @param signedPdfBytes     bytes of the fully-signed PDF
      * @param userX509CertBase64 Base64-encoded DER X.509 certificate returned
@@ -1458,8 +1476,6 @@ public final class eSignImplimentation {
             fontResources.put(new PdfName("F1"), fontRef.getIndirectReference());
             PdfDictionary resDict = new PdfDictionary();
             resDict.put(PdfName.FONT, fontResources);
-            // ponytail: ESP key marks already-patched appearances so re-entry skips them (avoids O(n²) on multi-signer PDFs)
-            resDict.put(new PdfName("ESP"), PdfBoolean.PDFTRUE);
 
             // Same face for the width metrics, so auto-fit matches what is drawn
             BaseFont bf = null;
@@ -1469,28 +1485,41 @@ public final class eSignImplimentation {
 
             SimpleDateFormat sdf = new SimpleDateFormat("dd-MMM-yyyy HH:mm:ss");
 
-            for (String sigFieldName : sigNames) {
-                AcroFields.Item item = acroFields.getFieldItem(sigFieldName);
-                if (item == null) continue;
-                PdfDictionary widget = item.getWidget(0);
-                if (widget == null) continue;
+            // Only the signature added by THIS round may be restyled. An earlier
+            // signer's appearance belongs to that signer's certificate, and rewriting
+            // it relabels their block with the latest signer's name and Aadhaar.
+            //
+            // The round is identified by its signature dictionary, not by position:
+            // PdfSignatureAppearance.preClose creates one signature FIELD PER SIGNED
+            // PAGE, all sharing a single /V, so signing every page of a document
+            // contributes several field names at once. getSignatureNames() is ordered
+            // by byte-range end (i.e. by revision), so the newest signature is last;
+            // every field pointing at that same /V object belongs with it.
+            String newestField = sigNames.get(sigNames.size() - 1);
+            int currentSigObject = signatureValueNumber(acroFields, newestField);
 
-                // Skip appearances already patched by a previous signing round
-                PdfDictionary existingAp = widget.getAsDict(PdfName.AP);
-                if (existingAp != null) {
-                    PdfObject nObj = PdfReader.getPdfObject(existingAp.get(PdfName.N));
-                    if (nObj instanceof PdfDictionary && ((PdfDictionary) nObj).get(new PdfName("ESP")) != null)
-                        continue;
+            List<String> targetFields = new ArrayList<>();
+            for (String candidate : sigNames) {
+                if (candidate.equals(newestField)
+                        || (currentSigObject >= 0
+                            && signatureValueNumber(acroFields, candidate) == currentSigObject)) {
+                    targetFields.add(candidate);
                 }
+            }
 
-                Rectangle rect = PdfReader.getNormalizedRectangle(widget.getAsArray(PdfName.RECT));
+            for (String sigFieldName : targetFields) {
+                AcroFields.Item item = acroFields.getFieldItem(sigFieldName);
+                if (item == null || item.size() == 0) continue;
+                // /V lives on the field dictionary, which for a multi-widget field is
+                // the parent rather than any kid, so read it from the merged view.
+                PdfDictionary fieldDict = item.getMerged(0);
 
                 // Read date / reason / location from the embedded signature dictionary
                 Date signedOn = new Date();
                 String reason = "";
                 String location = "";
                 try {
-                    PdfDictionary sigDict = (PdfDictionary) PdfReader.getPdfObject(widget.get(PdfName.V));
+                    PdfDictionary sigDict = (PdfDictionary) PdfReader.getPdfObject(fieldDict.get(PdfName.V));
                     if (sigDict != null) {
                         PdfString dateStr = sigDict.getAsString(PdfName.M);
                         if (dateStr != null) {
@@ -1521,108 +1550,117 @@ public final class eSignImplimentation {
                 }
                 if (lines.isEmpty()) continue;
 
-                // Auto-fit font size so all lines stay within the signature box
-                final float leftMargin = appearance != null ? appearance.getMarginLeft() : 4f;
-                final float rightMargin = appearance != null ? appearance.getMarginRight() : 4f;
-                final float topMargin = appearance != null ? appearance.getMarginTop() : 3f;
-                final float bottomMargin = appearance != null ? appearance.getMarginBottom() : 3f;
-                float availableWidth = rect.getWidth() - leftMargin - rightMargin;
-                float availableHeight = rect.getHeight() - topMargin - bottomMargin;
+                // A field may have one widget per signed page; each gets its own
+                // rectangle, so fit and draw the block once per widget.
+                for (int widgetIdx = 0; widgetIdx < item.size(); widgetIdx++) {
+                    PdfDictionary widget = item.getWidget(widgetIdx);
+                    if (widget == null) continue;
+                    Rectangle rect = PdfReader.getNormalizedRectangle(widget.getAsArray(PdfName.RECT));
+                    if (rect == null) continue;
 
-                // Start from height-based maximum
-                float fontSize = (lines.isEmpty()) ? 8f : availableHeight / lines.size();
+                    // Auto-fit font size so all lines stay within the signature box
+                    final float leftMargin = appearance != null ? appearance.getMarginLeft() : 4f;
+                    final float rightMargin = appearance != null ? appearance.getMarginRight() : 4f;
+                    final float topMargin = appearance != null ? appearance.getMarginTop() : 3f;
+                    final float bottomMargin = appearance != null ? appearance.getMarginBottom() : 3f;
+                    float availableWidth = rect.getWidth() - leftMargin - rightMargin;
+                    float availableHeight = rect.getHeight() - topMargin - bottomMargin;
 
-                // Shrink further if any line is wider than the box using BaseFont metrics
-                if (bf != null) {
-                    for (String line : lines) {
-                        float lineWidth = bf.getWidthPoint(line, fontSize);
-                        if (lineWidth > availableWidth && lineWidth > 0) {
-                            float scaled = fontSize * availableWidth / lineWidth;
-                            if (scaled < fontSize) fontSize = scaled;
+                    // Start from height-based maximum
+                    float fontSize = (lines.isEmpty()) ? 8f : availableHeight / lines.size();
+
+                    // Shrink further if any line is wider than the box using BaseFont metrics
+                    if (bf != null) {
+                        for (String line : lines) {
+                            float lineWidth = bf.getWidthPoint(line, fontSize);
+                            if (lineWidth > availableWidth && lineWidth > 0) {
+                                float scaled = fontSize * availableWidth / lineWidth;
+                                if (scaled < fontSize) fontSize = scaled;
+                            }
                         }
                     }
-                }
 
-                // Clamp to a readable range, unless the ASP fixed the size explicitly
-                if (appearance != null && appearance.getFontSize() > 0) {
-                    fontSize = appearance.getFontSize();
-                } else {
-                    fontSize = Math.max(4f, Math.min(fontSize, 10f));
-                }
-                float leading = (appearance != null && appearance.getLeading() > 0)
-                        ? appearance.getLeading() : fontSize;
-                int n = lines.size();
-
-                // Compute max line width for horizontal centering/right-aligning
-                float maxLW = availableWidth;
-                if (bf != null) {
-                    float mw = 0f;
-                    for (String line : lines) mw = Math.max(mw, bf.getWidthPoint(line, fontSize));
-                    if (mw > 0) maxLW = mw;
-                }
-
-                float startY;
-                switch (contentPosition != null ? contentPosition : eSign.Coordinates.TopLeft) {
-                    case BottomLeft: case BottomMiddle: case BottomRight:
-                        startY = bottomMargin + (n - 1) * leading;
-                        break;
-                    case CenterLeft: case CenterMiddle: case CenterRight:
-                        startY = (rect.getHeight() + fontSize * (n - 2)) / 2f;
-                        break;
-                    default:
-                        startY = rect.getHeight() - topMargin - fontSize;
-                }
-
-                float startX;
-                switch (contentPosition != null ? contentPosition : eSign.Coordinates.TopLeft) {
-                    case TopMiddle: case CenterMiddle: case BottomMiddle:
-                        startX = Math.max(leftMargin, (rect.getWidth() - maxLW) / 2f);
-                        break;
-                    case TopRight: case CenterRight: case BottomRight:
-                        startX = Math.max(leftMargin, rect.getWidth() - rightMargin - maxLW);
-                        break;
-                    default:
-                        startX = leftMargin;
-                }
-
-                StringBuilder cs = new StringBuilder();
-                cs.append("BT\n");
-                cs.append(String.format(java.util.Locale.US, "/F1 %.2f Tf\n", fontSize));
-                float[] rgb = appearance != null ? appearance.resolveFontColor() : new float[]{0f, 0f, 0f};
-                cs.append("/DeviceRGB cs\n");
-                cs.append(String.format(java.util.Locale.US, "%.3f %.3f %.3f sc\n", rgb[0], rgb[1], rgb[2]));
-                cs.append(String.format(java.util.Locale.US, "%.2f %.2f Td\n", startX, startY));
-                cs.append(String.format(java.util.Locale.US, "%.2f TL\n", leading));
-                for (int li = 0; li < lines.size(); li++) {
-                    String escaped = lines.get(li)
-                            .replace("\\", "\\\\")
-                            .replace("(", "\\(")
-                            .replace(")", "\\)");
-                    if (li < lines.size() - 1) {
-                        cs.append("(").append(escaped).append(") Tj T*\n");
+                    // Clamp to a readable range, unless the ASP fixed the size explicitly
+                    if (appearance != null && appearance.getFontSize() > 0) {
+                        fontSize = appearance.getFontSize();
                     } else {
-                        cs.append("(").append(escaped).append(") Tj\n");
+                        fontSize = Math.max(4f, Math.min(fontSize, 10f));
                     }
+                    float leading = (appearance != null && appearance.getLeading() > 0)
+                            ? appearance.getLeading() : fontSize;
+                    int n = lines.size();
+
+                    // Compute max line width for horizontal centering/right-aligning
+                    float maxLW = availableWidth;
+                    if (bf != null) {
+                        float mw = 0f;
+                        for (String line : lines) mw = Math.max(mw, bf.getWidthPoint(line, fontSize));
+                        if (mw > 0) maxLW = mw;
+                    }
+
+                    float startY;
+                    switch (contentPosition != null ? contentPosition : eSign.Coordinates.TopLeft) {
+                        case BottomLeft: case BottomMiddle: case BottomRight:
+                            startY = bottomMargin + (n - 1) * leading;
+                            break;
+                        case CenterLeft: case CenterMiddle: case CenterRight:
+                            startY = (rect.getHeight() + fontSize * (n - 2)) / 2f;
+                            break;
+                        default:
+                            startY = rect.getHeight() - topMargin - fontSize;
+                    }
+
+                    float startX;
+                    switch (contentPosition != null ? contentPosition : eSign.Coordinates.TopLeft) {
+                        case TopMiddle: case CenterMiddle: case BottomMiddle:
+                            startX = Math.max(leftMargin, (rect.getWidth() - maxLW) / 2f);
+                            break;
+                        case TopRight: case CenterRight: case BottomRight:
+                            startX = Math.max(leftMargin, rect.getWidth() - rightMargin - maxLW);
+                            break;
+                        default:
+                            startX = leftMargin;
+                    }
+
+                    StringBuilder cs = new StringBuilder();
+                    cs.append("BT\n");
+                    cs.append(String.format(java.util.Locale.US, "/F1 %.2f Tf\n", fontSize));
+                    float[] rgb = appearance != null ? appearance.resolveFontColor() : new float[]{0f, 0f, 0f};
+                    cs.append("/DeviceRGB cs\n");
+                    cs.append(String.format(java.util.Locale.US, "%.3f %.3f %.3f sc\n", rgb[0], rgb[1], rgb[2]));
+                    cs.append(String.format(java.util.Locale.US, "%.2f %.2f Td\n", startX, startY));
+                    cs.append(String.format(java.util.Locale.US, "%.2f TL\n", leading));
+                    for (int li = 0; li < lines.size(); li++) {
+                        String escaped = lines.get(li)
+                                .replace("\\", "\\\\")
+                                .replace("(", "\\(")
+                                .replace(")", "\\)");
+                        if (li < lines.size() - 1) {
+                            cs.append("(").append(escaped).append(") Tj T*\n");
+                        } else {
+                            cs.append("(").append(escaped).append(") Tj\n");
+                        }
+                    }
+                    cs.append("ET");
+
+                    byte[] streamBytes = cs.toString().getBytes(java.nio.charset.Charset.forName("windows-1252"));
+
+                    // Create a Form XObject containing the text content stream
+                    PRStream apStream = new PRStream(reader, streamBytes);
+                    apStream.put(PdfName.TYPE, PdfName.XOBJECT);
+                    apStream.put(PdfName.SUBTYPE, PdfName.FORM);
+                    apStream.put(PdfName.BBOX, new PdfArray(new float[]{0f, 0f, rect.getWidth(), rect.getHeight()}));
+                    apStream.put(PdfName.RESOURCES, resDict);
+                    PdfIndirectObject apRef = stamper.getWriter().addToBody(apStream);
+
+                    // Point the widget's appearance /AP /N at the new Form XObject
+                    PdfDictionary newAp = new PdfDictionary();
+                    newAp.put(PdfName.N, apRef.getIndirectReference());
+                    widget.put(PdfName.AP, newAp);
+
+                    // Mark widget as modified so it is written in the incremental revision
+                    stamper.markUsed(widget);
                 }
-                cs.append("ET");
-
-                byte[] streamBytes = cs.toString().getBytes(java.nio.charset.Charset.forName("windows-1252"));
-
-                // Create a Form XObject containing the text content stream
-                PRStream apStream = new PRStream(reader, streamBytes);
-                apStream.put(PdfName.TYPE, PdfName.XOBJECT);
-                apStream.put(PdfName.SUBTYPE, PdfName.FORM);
-                apStream.put(PdfName.BBOX, new PdfArray(new float[]{0f, 0f, rect.getWidth(), rect.getHeight()}));
-                apStream.put(PdfName.RESOURCES, resDict);
-                PdfIndirectObject apRef = stamper.getWriter().addToBody(apStream);
-
-                // Point the widget's appearance /AP /N at the new Form XObject
-                PdfDictionary newAp = new PdfDictionary();
-                newAp.put(PdfName.N, apRef.getIndirectReference());
-                widget.put(PdfName.AP, newAp);
-
-                // Mark widget as modified so it is written in the incremental revision
-                stamper.markUsed(widget);
             }
 
             stamper.close();

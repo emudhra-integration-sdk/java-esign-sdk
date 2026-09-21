@@ -4,6 +4,7 @@ A Java SDK for eMudhra's Aadhaar-based and PAN-based eSign service. Implements *
 
 ## Table of Contents
 
+- [What's New in 5.10](#whats-new-in-510)
 - [What's New in 5.9](#whats-new-in-59)
 - [Overview](#overview)
 - [Prerequisites](#prerequisites)
@@ -31,6 +32,17 @@ A Java SDK for eMudhra's Aadhaar-based and PAN-based eSign service. Implements *
 - [Error Codes](#error-codes)
 - [Logging](#logging)
 - [Building from Source](#building-from-source)
+
+---
+
+## What's New in 5.10
+
+| Change | Where |
+|---|---|
+| **Co-signing fix** — a new signature no longer restyles the signature blocks of earlier signers. Each block keeps the name and Aadhaar of the certificate that signed it | [Aadhaar Appearance Patching](#aadhaar-appearance-patching) |
+
+Documents already co-signed under 5.5 to 5.9 cannot be repaired — the earlier block was
+overwritten in a past revision — and must be signed again.
 
 ---
 
@@ -72,7 +84,7 @@ Phase 2: User Authentication + getSigedDocument()
 ## Prerequisites
 
 - **Java 8** or higher
-- **eSignASPLibrary5_9.jar** (the SDK JAR from `dist/`)
+- **eSignASPLibrary5_10.jar** (the SDK JAR from `dist/`)
 - **All dependency JARs** from the `lib/` folder:
   - batik-all-1.13.jar
   - commons-io-2.4.jar
@@ -2001,7 +2013,7 @@ ant clean jar
 
 The built JAR will be at:
 ```
-dist/eSignASPLibrary5_9.jar
+dist/eSignASPLibrary5_10.jar
 ```
 
 ### Common Build Errors
@@ -2029,4 +2041,4 @@ A JRE is installed instead of a JDK. Install JDK 8 or higher and ensure `JAVA_HO
 
 ### Using the JAR
 
-Once built, add `dist/eSignASPLibrary5_9.jar` and all JARs from the `lib/` folder to your project's classpath.
+Once built, add `dist/eSignASPLibrary5_10.jar` and all JARs from the `lib/` folder to your project's classpath.
