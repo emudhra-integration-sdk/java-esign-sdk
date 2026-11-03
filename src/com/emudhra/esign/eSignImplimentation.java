@@ -1623,6 +1623,13 @@ public final class eSignImplimentation {
                     }
 
                     StringBuilder cs = new StringBuilder();
+                    if (appearance != null && appearance.isBorderRequired()) {
+                        // Same box the pre-sign BorderRequired path draws, which this
+                        // appearance replaces: black, 0.5pt, inset 1pt from the edges.
+                        cs.append(String.format(java.util.Locale.US,
+                                "q 0 G 0.50 w 1.00 1.00 %.2f %.2f re S Q\n",
+                                rect.getWidth() - 2f, rect.getHeight() - 2.5f));
+                    }
                     cs.append("BT\n");
                     cs.append(String.format(java.util.Locale.US, "/F1 %.2f Tf\n", fontSize));
                     float[] rgb = appearance != null ? appearance.resolveFontColor() : new float[]{0f, 0f, 0f};
