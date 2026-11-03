@@ -24,6 +24,7 @@ A Java SDK for integrating eMudhra's Aadhaar-based and PAN-based eSign service i
 - **Multiple Signature Appearances** — Standard, Image, OneLiner, Advanced, ColoredGraphic, BackgroundImage
 - **Multi-Document Signing** — Sign up to 5 documents in a single request
 - **Hash-Based Signing** — Sign using pre-computed SHA-256 hashes without sending the full PDF
+- **NEW: eMandate XML Signing** — `eSign.InputType.EMANDATE` signs an NPCI pain.009.001.04 mandate and returns it with the `SplmtryData/Envlp/Cnts/esign` block, identical to the .NET SDK's output ([guide](documentation/QUICK_START.md#emandate-xml-signing))
 - **Flexible Placement** — Named coordinates, page-level coordinates, or content-search-based positioning
 - **Co-Signing Support** — Add multiple signatures to the same document
 - **Bank KYC** — Perform Bank KYC verification through eMudhra
@@ -111,7 +112,7 @@ ant compile
 ant clean
 ```
 
-Output: `dist/eSignASPLibrary5_10.jar`
+Output: `dist/eSignASPLibrary5_11.jar`
 
 > The build badge above confirms the source compiles correctly on every commit. A passing build means the code is ready for you to compile and use.
 
