@@ -847,6 +847,21 @@ public final class eSignImplimentation {
                         returnDocuments.add(returnDocument);
                         count++;
                     }
+                } else if (input.getInputType() == eSign.InputType.EMANDATE) {
+                    try {
+                        byte[] canonical = EMandateXml.canonicalize(input.getDocXml());
+                        String hexHashDocument = Hex.toHexString(MessageDigest.getInstance("SHA-256").digest(canonical));
+                        ReturnDocument returnDocument = new ReturnDocument("", count, input.getDocInfo(), input.getDocURL(), hexHashDocument, "", eSign.InputType.EMANDATE);
+                        // The canonical XML rides in the temp file's payload slot; phase 2 needs it for SignedContent.
+                        returnDocument.setPreSignedRaw(canonical, -1, 0);
+                        returnDocuments.add(returnDocument);
+                    } catch (EMandateXml.EMandateException e) {
+                        returnDocuments.add(new ReturnDocument(0, e.getMessage(), "ESS-116", 0));
+                    } catch (Exception e) {
+                        LOGGER.log(java.util.logging.Level.WARNING, "Unable to process eMandate XML doc[" + count + "] txn=" + transactionID, e);
+                        returnDocuments.add(new ReturnDocument(0, "Unable to process eMandate XML - " + e, "ESS-116", 0));
+                    }
+                    count++;
                 }
             }
             if (!eSignUtility.allDocumentHaveError(returnDocuments)) {
@@ -1147,7 +1162,17 @@ public final class eSignImplimentation {
                     } else {
                         String PKCS7ResponseBase64 = eSignUtility.getCharacterDataFromElement(sigElement);
                         try {
-                            if (!returnDocument.hasPreSignedPayload()) {
+                            if (returnDocument.getInputType() == eSign.InputType.EMANDATE) {
+                                try {
+                                    returnDocument.setSignedXML(EMandateXml.buildSignedXml(returnDocument.getPreSignedRaw(), userX509CertBase64, PKCS7ResponseBase64));
+                                    returnDocument.setSignedData(PKCS7ResponseBase64);
+                                    returnDocument.setStatus(1);
+                                } catch (EMandateXml.EMandateException e) {
+                                    returnDocument.setErrorCode("ESS-117");
+                                    returnDocument.setErrorMessage("Unable to build signed eMandate XML - " + e.getMessage());
+                                    returnDocument.setStatus(0);
+                                }
+                            } else if (!returnDocument.hasPreSignedPayload()) {
                                 returnDocument.setSignedData(PKCS7ResponseBase64);
                                 returnDocument.setStatus(1);
                             } else {

@@ -86,7 +86,15 @@ public class eSign {
 
     public enum InputType {
         PDF,
-        HASH
+        HASH,
+        /**
+         * NPCI eMandate XML (pain.009.001.04), set with
+         * {@link eSignInputBuilder#setDocXml(String)}. The signed mandate comes back in
+         * {@link ReturnDocument#getSignedXML()}: the XML with Dbtr/CtctDtls/Nm and
+         * Mndt/SplmtryData/Envlp/Cnts/esign{SignedContent, X509Certificate, Signature} added,
+         * in the same layout as the .NET SDK's eMandate signing.
+         */
+        EMANDATE
     }
 
     public eSign(String ASPID, String eSignURL, String eSignURLV2, String pfxpath, String password, String pfxAlias) throws NoSuchAlgorithmException {
