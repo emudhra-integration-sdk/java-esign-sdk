@@ -16,6 +16,7 @@ public final class ReturnDocument {
 
     private String signedDocument;
     private String signedData;
+    private String signedXML;
 //    private boolean isPDF;
     private String documentHash;
     private String preSignedDocument;
@@ -271,6 +272,18 @@ public final class ReturnDocument {
 
     public eSign.InputType getInputType() {
         return inputType;
+    }
+
+    /**
+     * The signed eMandate XML for an {@link eSign.InputType#EMANDATE} document; null for
+     * other input types. {@link #getSignedData()} holds the gateway's PKCS#7 for it as well.
+     */
+    public String getSignedXML() {
+        return signedXML;
+    }
+
+    protected void setSignedXML(String signedXML) {
+        this.signedXML = signedXML;
     }
 
     private Exception IllegalArgumentException(String invalid_return_Document) {

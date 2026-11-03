@@ -45,6 +45,16 @@ public final class eSignInput {
     private eSign.Coordinates textContentPosition = eSign.Coordinates.TopLeft;
     private EncryptedAadhaarConfig encryptedAadhaarConfig;
     private boolean encryptedAadhaarFlowEnabled = false;
+    private String docXml = "";
+
+    /** The eMandate XML for {@link eSign.InputType#EMANDATE}; empty for other input types. */
+    public String getDocXml() {
+        return docXml;
+    }
+
+    void setDocXml(String docXml) {
+        this.docXml = docXml == null ? "" : docXml;
+    }
 
     public String getPdfPassword() {
         return pdfPassword;

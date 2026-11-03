@@ -513,7 +513,9 @@ public final class eSignUtility {
                 inputHashTag.setAttributeNode(docUrlAttr);
 
                 Attr responseSigTypeAttr = document.createAttribute("responseSigType");
-                responseSigTypeAttr.setValue(isLTVRequired ? "PKCS7pdf" : "PKCS7");
+                // PKCS7pdf is for PDF signatures; an eMandate carries a plain PKCS#7.
+                boolean pdfSig = isLTVRequired && returnDocument.getInputType() != eSign.InputType.EMANDATE;
+                responseSigTypeAttr.setValue(pdfSig ? "PKCS7pdf" : "PKCS7");
                 inputHashTag.setAttributeNode(responseSigTypeAttr);
 
                 inputHashTag.appendChild(document.createTextNode(returnDocument.getDocumentHash()));
@@ -559,7 +561,8 @@ public final class eSignUtility {
             eSignTag.setAttributeNode(responseUrlAttr);
 
             Attr signingAlgorithmAttr = document.createAttribute("responseSigType");
-            signingAlgorithmAttr.setValue(isLTVRequired ? "PKCS7pdf" : "PKCS7");
+            // V2 has one responseSigType for the whole request: plain PKCS7 when it is all eMandates.
+            signingAlgorithmAttr.setValue(isLTVRequired && !allEMandate(returnDocuments) ? "PKCS7pdf" : "PKCS7");
             eSignTag.setAttributeNode(signingAlgorithmAttr);
 
             Attr sc = document.createAttribute("sc");
@@ -611,6 +614,20 @@ public final class eSignUtility {
         }
     }
 
+    private static boolean allEMandate(ArrayList<ReturnDocument> returnDocuments) {
+        boolean any = false;
+        for (ReturnDocument r : returnDocuments) {
+            if (r.getDocId() == 0) {
+                continue;
+            }
+            if (r.getInputType() != eSign.InputType.EMANDATE) {
+                return false;
+            }
+            any = true;
+        }
+        return any;
+    }
+
     /**
      * Temp-file format V2 magic. Legacy files are a single line of Base64 and
      * can never contain '\n', so this prefix is unambiguous.
@@ -620,8 +637,9 @@ public final class eSignUtility {
     /**
      * Writes the pre-signed transaction data as format V2: the magic, then per
      * document one ASCII header line
-     * {@code docId|b64(docInfo)|b64(docURL)|hash|position|boutLen|showAadhaar|textPos|payloadLen}
-     * followed by the raw pre-signed PDF bytes. Streams straight to disk —
+     * {@code docId|b64(docInfo)|b64(docURL)|hash|position|boutLen|showAadhaar|textPos|payloadLen|inputType}
+     * followed by the raw pre-signed PDF bytes (for EMANDATE, the canonical mandate XML).
+     * Readers that predate the trailing inputType field ignore it. Streams straight to disk —
      * no Base64 layering, no whole-transaction String is ever built, so heap
      * cost is O(1) beyond the payload the documents already hold.
      */
@@ -642,7 +660,8 @@ public final class eSignUtility {
                         + r.getSigBoutLen() + "|"
                         + r.isShowAadhaarOnSignature() + "|"
                         + r.getTextContentPosition().name() + "|"
-                        + payloadLen + "\n";
+                        + payloadLen + "|"
+                        + (r.getInputType() == null ? "" : r.getInputType().name()) + "\n";
                 out.write(header.getBytes(StandardCharsets.US_ASCII));
                 if (payloadLen > 0) {
                     out.write(payload);
@@ -713,6 +732,13 @@ public final class eSignUtility {
                 }
             }
             eSign.InputType inputType = payloadLen > 0 ? eSign.InputType.PDF : eSign.InputType.HASH;
+            if (f.length >= 10 && !f[9].isEmpty()) {
+                try {
+                    inputType = eSign.InputType.valueOf(f[9]);
+                } catch (IllegalArgumentException ignored) {
+                    // written by a newer SDK; keep the payload-based guess
+                }
+            }
             ReturnDocument r = new ReturnDocument("", docId, docInfo, docURL, documentHash, "", inputType, showAadhaar, textPos);
             if (payload != null) {
                 r.setPreSignedRaw(payload, position, boutLen);

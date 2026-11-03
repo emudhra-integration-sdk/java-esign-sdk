@@ -110,6 +110,12 @@ public class AadhaarSignatureAppearance {
     private boolean italic;
     /** Draw the block in bold (Helvetica-Bold). */
     private boolean bold;
+    /**
+     * Draw a thin black box around the signature rectangle. The patched appearance
+     * replaces the pre-sign one, so {@code eSignInputBuilder.setBorderRequired}
+     * alone does not survive it — set this to keep the box.
+     */
+    private boolean borderRequired;
 
     private float marginLeft = 4f;
     private float marginRight = 4f;
@@ -433,6 +439,9 @@ public class AadhaarSignatureAppearance {
 
     public boolean isBold() { return bold; }
     public void setBold(boolean bold) { this.bold = bold; }
+
+    public boolean isBorderRequired() { return borderRequired; }
+    public void setBorderRequired(boolean borderRequired) { this.borderRequired = borderRequired; }
 
     public float getMarginLeft() { return marginLeft; }
     public void setMarginLeft(float marginLeft) { this.marginLeft = marginLeft; }

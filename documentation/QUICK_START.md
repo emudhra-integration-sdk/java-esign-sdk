@@ -4,6 +4,7 @@ A Java SDK for eMudhra's Aadhaar-based and PAN-based eSign service. Implements *
 
 ## Table of Contents
 
+- [What's New in 5.11](#whats-new-in-511)
 - [What's New in 5.10](#whats-new-in-510)
 - [What's New in 5.9](#whats-new-in-59)
 - [Overview](#overview)
@@ -18,6 +19,7 @@ A Java SDK for eMudhra's Aadhaar-based and PAN-based eSign service. Implements *
 - [Page Selection and Coordinates](#page-selection-and-coordinates)
 - [Multi-Document Signing](#multi-document-signing)
 - [Hash-Based Signing](#hash-based-signing)
+- [eMandate XML Signing](#emandate-xml-signing) — **NEW**
 - [Aadhaar Appearance Patching](#aadhaar-appearance-patching)
 - [Customising the Aadhaar Appearance](#customising-the-aadhaar-appearance--latest) — **LATEST**
 - [Signer Certificate Details](#signer-certificate-details--latest) — **LATEST**
@@ -33,6 +35,18 @@ A Java SDK for eMudhra's Aadhaar-based and PAN-based eSign service. Implements *
 - [Error Codes](#error-codes)
 - [Logging](#logging)
 - [Building from Source](#building-from-source)
+
+---
+
+## What's New in 5.11
+
+| Change | Where |
+|---|---|
+| **eMandate XML signing** — `eSign.InputType.EMANDATE` with `eSignInputBuilder.setDocXml()` signs an NPCI pain.009.001.04 mandate; `ReturnDocument.getSignedXML()` returns it with the `SplmtryData/Envlp/Cnts/esign` block, byte-for-byte the same as the .NET SDK's output. Unusable mandates are rejected before the user authenticates (`ESS-116`) | [eMandate XML Signing](#emandate-xml-signing) |
+| **Border on the patched appearance** — `AadhaarSignatureAppearance.setBorderRequired(true)` keeps the signature box, which the post-signing patch used to drop | [Customising the Aadhaar Appearance](#customising-the-aadhaar-appearance--latest) |
+
+Upgrading from 5.10 requires no code changes; both are additions. Temp files from 5.10 are
+still readable, so a rolling deployment mid-transaction is safe for PDF and hash signing.
 
 ---
 
@@ -85,7 +99,7 @@ Phase 2: User Authentication + getSigedDocument()
 ## Prerequisites
 
 - **Java 8** or higher
-- **eSignASPLibrary5_10.jar** (the SDK JAR from `dist/`)
+- **eSignASPLibrary5_11.jar** (the SDK JAR from `dist/`)
 - **All dependency JARs** from the `lib/` folder:
   - batik-all-1.13.jar
   - commons-io-2.4.jar
@@ -968,6 +982,60 @@ eSignInput input = new eSignInput("Document Info", "a1b2c3d4e5f6...", "https://e
 
 ---
 
+## eMandate XML Signing
+
+Signs an NPCI eMandate initiation request (`pain.009.001.04`) and returns it with the
+eSign block NPCI expects. The output is byte-for-byte what the .NET SDK's eMandate signing
+produces for the same mandate and gateway response.
+
+```java
+eSignInput input = eSignInputBuilder.init()
+    .setInputType(eSign.InputType.EMANDATE)
+    .setDocXml(mandateXml)                        // the pain.009 XML as text, not Base64
+    .setDocInfo("MANDATE-MSG-0001")               // e.g. GrpHdr/MsgId
+    .setDocURL("https://yourapp.com/mandate.xml") // required by V3 (ESP-203 without it)
+    .build();
+
+// Phase 1 and phase 2 are the same as for a PDF:
+eSignServiceReturn r = esignObj.getSigedDocument(responseXML, preSignedTempFile);
+ReturnDocument doc = r.getReturnDocuments().get(0);
+String signedMandate = doc.getSignedXML();  // the signed pain.009
+String pkcs7 = doc.getSignedData();         // the gateway's PKCS#7, also inside the XML
+```
+
+What the SDK does:
+
+1. **Phase 1** canonicalises the mandate (C14N 1.0 without comments, whitespace-only text
+   dropped), sends SHA-256 of those bytes as the document hash, and keeps them in the temp
+   file. `responseSigType` is `PKCS7` for eMandate documents, never `PKCS7pdf`.
+2. **Phase 2** inserts `Mndt/Dbtr/CtctDtls/Nm` = `00000000` + the Aadhaar last 4 digits
+   (certificate title, OID 2.5.4.12) as the first child of `CtctDtls`, and appends to `Mndt`:
+
+```xml
+<SplmtryData><Envlp><Cnts><esign>
+    <SignedContent>Base64 of the canonical mandate (exactly what was signed)</SignedContent>
+    <X509Certificate>signer certificate, Base64</X509Certificate>
+    <Signature>gateway PKCS#7 (detached, messageDigest = SHA-256 of SignedContent)</Signature>
+</esign></Cnts></Envlp></SplmtryData>
+```
+
+The result has no XML declaration and no indentation. To verify it, decode `SignedContent`,
+hash it, and pass the hash and `Signature` to
+[`verifyEsignResponseHash()`](#verifying-a-signature--latest).
+
+Requirements, checked in phase 1 so the user's OTP is not wasted (`ESS-116` on the document in
+`getReturnDocuments()`; the call itself reports `ESS-108`):
+
+- root namespace `urn:iso:std:iso:20022:tech:xsd:pain.009.001.04` (pain.010/011 are not supported)
+- a `Mndt/Dbtr/CtctDtls` element **without** an `Nm` child — the SDK adds it
+- no `SplmtryData` (not already signed)
+
+> **Note:** `CtctDtls/Nm` is added after signing, so it is outside the signature. The signer
+> certificate must carry the Aadhaar last 4 digits: Aadhaar (V2, or V3 via the Aadhaar page)
+> works; PAN certificates fail in phase 2 with `ESS-117`.
+
+---
+
 ## Aadhaar Appearance Patching
 
 After the gateway returns the PKCS7 signature, the SDK can optionally patch the visual appearance of every signature field to display the signer's real name and masked Aadhaar number — both extracted automatically from the `UserX509Certificate` in the gateway response.
@@ -1085,6 +1153,11 @@ Passing an appearance is enough to trigger patching on its own — `setShowAadha
 | `setFontColorHex(String)` | null | `"RRGGBB"` or `"#RRGGBB"`; invalid values fall back to black |
 | `setContentPosition(eSign.Coordinates)` | `TopLeft` | Anchor within the signature rectangle |
 | `setMarginLeft` / `Right` / `Top` / `Bottom` | `4`, `4`, `3`, `3` | Padding inside the rectangle, in points |
+| `setBorderRequired(boolean)` | `false` | Draws a thin black box around the signature rectangle |
+
+**Border:** the patched appearance replaces the one drawn at pre-sign time, so
+`eSignInputBuilder.setBorderRequired(true)` alone does not survive it. Set
+`ap.setBorderRequired(true)` to keep the box; it is the same box, drawn again.
 
 The name is always resolved as `signerName` → certificate CN. There is no setter for the Aadhaar name or number: both come from the gateway certificate (CN, and the Title OID `2.5.4.12`).
 
@@ -1835,6 +1908,7 @@ Builder for creating `eSignInput` objects. Start with `eSignInputBuilder.init()`
 |--------|------|-------------|
 | `setDocBase64(String)` | String | Base64-encoded PDF document |
 | `setDocHash(String)` | String | SHA-256 hash (for HASH input type) |
+| `setDocXml(String)` | String | eMandate XML, plain text (for EMANDATE input type) — see [eMandate XML Signing](#emandate-xml-signing) |
 | `setDocInfo(String)` | String | Document description/info |
 | `setDocURL(String)` | String | Document URL |
 | `setSignedBy(String)` | String | Signer name displayed in appearance |
@@ -1848,7 +1922,7 @@ Builder for creating `eSignInput` objects. Start with `eSignInputBuilder.init()`
 | `setPageNumbers(String)` | String | Comma-separated page numbers (for Specify mode) |
 | `setPageLevelCoordinates(String)` | String | Per-page coordinates (for PageLevel mode) |
 | `setContentSearch(ContentSearch)` | ContentSearch | Text-relative placement config |
-| `setInputType(InputType)` | InputType | PDF or HASH (default: PDF) |
+| `setInputType(InputType)` | InputType | PDF, HASH or EMANDATE (default: PDF) |
 | `isRightOrigin(boolean)` | boolean | Use right edge as coordinate origin |
 | `setSignatureFontSize(int)` | int | Font size for signature text |
 | `setSignatureImage(String)` | String | Base64-encoded signature image |
@@ -1920,12 +1994,13 @@ Per-document result contained in `eSignServiceReturn.getReturnDocuments()`.
 |--------|-------------|-------------|
 | `getSignedDocument()` | String | Base64-encoded signed PDF |
 | `getSignedData()` | String | Raw signed data |
+| `getSignedXML()` | String | Signed eMandate XML (EMANDATE input type only; null otherwise) |
 | `getDocumentHash()` | String | Document SHA-256 hash |
 | `getDocId()` | int | Document ID (1-based index) |
 | `getDocInfo()` | String | Document info string |
 | `getDocURL()` | String | Document URL |
 | `getPreSignedDocument()` | String | Pre-signed document data |
-| `getInputType()` | eSign.InputType | PDF or HASH |
+| `getInputType()` | eSign.InputType | PDF, HASH or EMANDATE |
 | `getStatus()` | int | 1 = success, 0 = failure |
 | `getErrorCode()` | String | Per-document error code |
 | `getErrorMessage()` | String | Per-document error message |
@@ -1993,6 +2068,7 @@ Per-document result contained in `eSignServiceReturn.getReturnDocuments()`.
 |-------|-------------|
 | `PDF` | Full PDF document (default) |
 | `HASH` | Pre-computed SHA-256 hash only |
+| `EMANDATE` | NPCI eMandate XML (pain.009.001.04); result in `ReturnDocument.getSignedXML()` |
 
 #### `eSign.AppreanceRunDirection`
 
@@ -2051,6 +2127,8 @@ Per-document result contained in `eSignServiceReturn.getReturnDocuments()`.
 | `ESS-112` | Unable to append signature to document. |
 | `ESS-113` | Unable to get document from temp path. |
 | `ESS-114` | Transaction ID must be less than 50 characters. |
+| `ESS-116` | eMandate XML cannot be signed: empty, not well-formed, not pain.009.001.04, no `Mndt/Dbtr/CtctDtls`, `CtctDtls/Nm` already present, or already signed. Found by `getGatewayParameter()` before the user authenticates; the call reports `ESS-108` as for any document error, and the `ESS-116` code and reason are on the document in `getReturnDocuments()`. |
+| `ESS-117` | Unable to build the signed eMandate XML, e.g. the signer certificate has no title (Aadhaar last 4 digits) — PAN-based certificates do not. |
 | `ESS-120` | Unable to find content (ContentSearch text not found), or invalid coordinate. |
 | `ESS-121` | Invalid ContentSearch parameters: height, width, offset, or position. |
 | `ESS-122` | Invalid font size. |
@@ -2126,7 +2204,7 @@ ant clean jar
 
 The built JAR will be at:
 ```
-dist/eSignASPLibrary5_10.jar
+dist/eSignASPLibrary5_11.jar
 ```
 
 ### Common Build Errors
@@ -2154,4 +2232,4 @@ A JRE is installed instead of a JDK. Install JDK 8 or higher and ensure `JAVA_HO
 
 ### Using the JAR
 
-Once built, add `dist/eSignASPLibrary5_10.jar` and all JARs from the `lib/` folder to your project's classpath.
+Once built, add `dist/eSignASPLibrary5_11.jar` and all JARs from the `lib/` folder to your project's classpath.

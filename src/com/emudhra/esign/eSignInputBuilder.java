@@ -43,6 +43,7 @@ public class eSignInputBuilder {
     private eSign.Coordinates textContentPosition = eSign.Coordinates.TopLeft;
     private EncryptedAadhaarConfig encryptedAadhaarConfig;
     private boolean encryptedAadhaarFlowEnabled = false;
+    private String docXml = "";
 
     private eSign.InputType inputType = eSign.InputType.PDF;
 
@@ -87,6 +88,17 @@ public class eSignInputBuilder {
 
     public eSignInputBuilder setDocHash(String docHash) {
         this.docHash = docHash;
+        return this;
+    }
+
+    /**
+     * The eMandate XML to sign (plain XML text, not Base64), for
+     * {@code setInputType(eSign.InputType.EMANDATE)}. It must be a pain.009.001.04
+     * Document with Mndt/Dbtr/CtctDtls and without CtctDtls/Nm, which the SDK fills
+     * with "00000000" + the Aadhaar last 4 digits from the signer certificate.
+     */
+    public eSignInputBuilder setDocXml(String docXml) {
+        this.docXml = docXml;
         return this;
     }
 
@@ -238,6 +250,7 @@ public class eSignInputBuilder {
         eSignInput input = new eSignInput(this.docBase64, this.docInfo, this.docURL, this.location, this.reason, this.signedBy, this.coSign, this.pageTobeSigned, this.coordinates, this.pageNumbers, this.pageLevelCoordinates, this.appearanceText, this.docHash, this.inputType, this.rightOrigin, this.contentSearch, this.signatureFontSize, this.signatureImage, this.appearanceType, this.oneLiner, this.advanceSignature, this.coloredGraphicInputs, this.customStyle, this.borderRequired, this.tickRequired, this.pdfPassword, this.showAadhaarOnSignature, this.textContentPosition);
         input.setEncryptedAadhaarConfig(this.encryptedAadhaarConfig);
         input.setEncryptedAadhaarFlowEnabled(this.encryptedAadhaarFlowEnabled);
+        input.setDocXml(this.docXml);
         return input;
     }
 }
