@@ -4,6 +4,7 @@ A Java SDK for eMudhra's Aadhaar-based and PAN-based eSign service. Implements *
 
 ## Table of Contents
 
+- [What's New in 5.12](#whats-new-in-512)
 - [What's New in 5.11](#whats-new-in-511)
 - [What's New in 5.10](#whats-new-in-510)
 - [What's New in 5.9](#whats-new-in-59)
@@ -35,6 +36,17 @@ A Java SDK for eMudhra's Aadhaar-based and PAN-based eSign service. Implements *
 - [Error Codes](#error-codes)
 - [Logging](#logging)
 - [Building from Source](#building-from-source)
+
+---
+
+## What's New in 5.12
+
+| Change | Where |
+|---|---|
+| **Patched Aadhaar signatures stay valid in Acrobat 26.003** — the post-signing patch no longer rewrites the signed signature field (Acrobat 26.003.22075 reports that as *"INVALID — the document has been altered or corrupted"*). The signer block is now added as a separate locked annotation over the box, so Acrobat reports *"Signature is VALID … subsequent changes"* | [Aadhaar Appearance Patching](#aadhaar-appearance-patching) |
+
+Upgrading from 5.11 requires no code changes. Documents patched by 5.11 and earlier show as
+invalid in Acrobat 26.003.22075 and later; they cannot be repaired and must be signed again.
 
 ---
 
@@ -99,7 +111,7 @@ Phase 2: User Authentication + getSigedDocument()
 ## Prerequisites
 
 - **Java 8** or higher
-- **eSignASPLibrary5_11.jar** (the SDK JAR from `dist/`)
+- **eSignASPLibrary5_12.jar** (the SDK JAR from `dist/`)
 - **All dependency JARs** from the `lib/` folder:
   - batik-all-1.13.jar
   - commons-io-2.4.jar
@@ -1058,6 +1070,23 @@ eSignInput input = eSignInputBuilder.init()
 
 No changes are needed in Phase 2 (`getSigedDocument`). The flag is stored in the pre-sign temp file and applied automatically when the signature is finalized.
 
+### How the block is applied (5.12)
+
+The signed signature field itself is never modified after signing — Acrobat 26.003 and
+later treat a changed signed field as *"document altered"* and mark the signature invalid.
+Instead:
+
+- **Phase 1** leaves the text layer of the signature field empty (a border set with
+  `setBorderRequired(true)` is still drawn).
+- **Phase 2** appends one incremental update containing a locked, print-only `/Stamp`
+  annotation (`/NM eSignDetails-<field>-<n>`) over the signature box, carrying the block
+  below on an opaque white background.
+
+Adding an annotation is a permitted change for an approval signature, so Acrobat reports
+*"Signature is VALID … there have been subsequent changes to the document"*. A plain
+*"not modified since this signature was applied"* is only possible when nothing is
+written after signing — i.e. without patching.
+
 ### What the patched appearance shows
 
 ```
@@ -1155,9 +1184,9 @@ Passing an appearance is enough to trigger patching on its own — `setShowAadha
 | `setMarginLeft` / `Right` / `Top` / `Bottom` | `4`, `4`, `3`, `3` | Padding inside the rectangle, in points |
 | `setBorderRequired(boolean)` | `false` | Draws a thin black box around the signature rectangle |
 
-**Border:** the patched appearance replaces the one drawn at pre-sign time, so
-`eSignInputBuilder.setBorderRequired(true)` alone does not survive it. Set
-`ap.setBorderRequired(true)` to keep the box; it is the same box, drawn again.
+**Border:** the signer block is an opaque overlay on top of the signature box.
+`ap.setBorderRequired(true)` draws the same box on the overlay, in addition to the one
+`eSignInputBuilder.setBorderRequired(true)` draws on the signature field.
 
 The name is always resolved as `signerName` → certificate CN. There is no setter for the Aadhaar name or number: both come from the gateway certificate (CN, and the Title OID `2.5.4.12`).
 
@@ -1342,7 +1371,7 @@ If the certificate carries no Title OID, `{aadhaar}` and `{aadhaarDigits}` resol
 - **Latin-1 only.** The block is drawn with a non-embedded base-14 Helvetica face in WinAnsi encoding, so a name in a regional script will not render. An embedded Unicode font is not yet supported.
 - **`z` in `dateFormat`** emits the zone abbreviation and is locale-sensitive. For a guaranteed literal, drop `z` and append the text through `additionalLines` or a label.
 - The signature **rectangle size** comes from Phase 1 (`pageLevelCoordinates` / `coordinates`). `contentPosition` only anchors the text inside whatever rectangle exists.
-- Patching replaces the signature's appearance stream, so the viewer's own validity tick is not preserved. Tick placement is controlled by the PDF viewer and cannot be positioned by the SDK.
+- Patching adds the block as an annotation on top of the signature field; the field's own appearance is left as signed. Tick placement is controlled by the PDF viewer and cannot be positioned by the SDK.
 
 ---
 
@@ -2204,7 +2233,7 @@ ant clean jar
 
 The built JAR will be at:
 ```
-dist/eSignASPLibrary5_11.jar
+dist/eSignASPLibrary5_12.jar
 ```
 
 ### Common Build Errors
@@ -2232,4 +2261,4 @@ A JRE is installed instead of a JDK. Install JDK 8 or higher and ensure `JAVA_HO
 
 ### Using the JAR
 
-Once built, add `dist/eSignASPLibrary5_11.jar` and all JARs from the `lib/` folder to your project's classpath.
+Once built, add `dist/eSignASPLibrary5_12.jar` and all JARs from the `lib/` folder to your project's classpath.
