@@ -22,6 +22,7 @@ import esign.text.pdf.PdfObject;
 import esign.text.pdf.PdfReader;
 import esign.text.pdf.PdfSignature;
 import esign.text.pdf.PdfSignatureAppearance;
+import esign.text.pdf.PdfAnnotation;
 import esign.text.pdf.PdfStamper;
 import esign.text.pdf.PdfString;
 import esign.text.pdf.AcroFields;
@@ -747,10 +748,18 @@ public final class eSignImplimentation {
                                 // Must happen AFTER setVisibleSignature so the layer bounding box is set.
                                 // Calling getLayer(2) here pre-initialises app[2], causing getAppearance()
                                 // to skip its own layer2 rendering and leave only our content.
+                                // With showAadhaarOnSignature the post-sign overlay carries the text.
+                                // Acrobat draws form widgets ABOVE annotations, so text drawn here
+                                // would show through the overlay - leave the signed widget blank.
                                 if (textLayerLines != null && !textLayerLines.isEmpty()) {
-                                    drawTextOnLayer2(appearance.getLayer(2), textLayerLines,
-                                            input.getTextContentPosition(), textLayerFontSize,
-                                            !appearance.isAcro6Layers());
+                                    // getLayer(2) must still be called: it stops iText drawing its
+                                    // own default description, so the layer stays empty.
+                                    PdfTemplate textLayer = appearance.getLayer(2);
+                                    if (!input.isShowAadhaarOnSignature()) {
+                                        drawTextOnLayer2(textLayer, textLayerLines,
+                                                input.getTextContentPosition(), textLayerFontSize,
+                                                !appearance.isAcro6Layers());
+                                    }
                                 }
 
                                 //Signature Border
@@ -1649,8 +1658,8 @@ public final class eSignImplimentation {
 
                     StringBuilder cs = new StringBuilder();
                     if (appearance != null && appearance.isBorderRequired()) {
-                        // Same box the pre-sign BorderRequired path draws, which this
-                        // appearance replaces: black, 0.5pt, inset 1pt from the edges.
+                        // Same box the pre-sign BorderRequired path draws:
+                        // black, 0.5pt, inset 1pt from the edges.
                         cs.append(String.format(java.util.Locale.US,
                                 "q 0 G 0.50 w 1.00 1.00 %.2f %.2f re S Q\n",
                                 rect.getWidth() - 2f, rect.getHeight() - 2.5f));
@@ -1675,7 +1684,11 @@ public final class eSignImplimentation {
                     }
                     cs.append("ET");
 
-                    byte[] streamBytes = cs.toString().getBytes(java.nio.charset.Charset.forName("windows-1252"));
+                    // Opaque background hides the pre-sign text underneath, so the box
+                    // looks exactly as it did when the widget's /AP was replaced.
+                    String bg = String.format(java.util.Locale.US, "q 1 1 1 rg 0 0 %.2f %.2f re f Q\n",
+                            rect.getWidth(), rect.getHeight());
+                    byte[] streamBytes = (bg + cs).getBytes(java.nio.charset.Charset.forName("windows-1252"));
 
                     // Create a Form XObject containing the text content stream
                     PRStream apStream = new PRStream(reader, streamBytes);
@@ -1685,13 +1698,24 @@ public final class eSignImplimentation {
                     apStream.put(PdfName.RESOURCES, resDict);
                     PdfIndirectObject apRef = stamper.getWriter().addToBody(apStream);
 
-                    // Point the widget's appearance /AP /N at the new Form XObject
+                    // The signed field itself must NOT be touched: rewriting its /AP after
+                    // signing is a disallowed change, and Acrobat/pyHanko then report the
+                    // signature as invalid ("document altered"). Instead the details go on a
+                    // separate locked, print-only Stamp annotation over the box. Adding an
+                    // annotation is a permitted change for an approval (non-certified)
+                    // signature, so the signature stays valid.
+                    Integer page = item.getPage(widgetIdx);
+                    if (page == null) continue;
+                    PdfAnnotation overlay = new PdfAnnotation(stamper.getWriter(), rect);
+                    overlay.put(PdfName.SUBTYPE, PdfName.STAMP);
+                    overlay.put(PdfName.NM, new PdfString("eSignDetails-" + sigFieldName + "-" + widgetIdx));
+                    overlay.put(PdfName.CONTENTS, new PdfString("Signature details: " + sigFieldName, PdfObject.TEXT_UNICODE));
+                    overlay.setFlags(PdfAnnotation.FLAGS_PRINT | PdfAnnotation.FLAGS_READONLY
+                            | PdfAnnotation.FLAGS_LOCKED | PdfAnnotation.FLAGS_LOCKEDCONTENTS);
                     PdfDictionary newAp = new PdfDictionary();
                     newAp.put(PdfName.N, apRef.getIndirectReference());
-                    widget.put(PdfName.AP, newAp);
-
-                    // Mark widget as modified so it is written in the incremental revision
-                    stamper.markUsed(widget);
+                    overlay.put(PdfName.AP, newAp);
+                    stamper.addAnnotation(overlay, page);
                 }
             }
 

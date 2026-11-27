@@ -111,9 +111,9 @@ public class AadhaarSignatureAppearance {
     /** Draw the block in bold (Helvetica-Bold). */
     private boolean bold;
     /**
-     * Draw a thin black box around the signature rectangle. The patched appearance
-     * replaces the pre-sign one, so {@code eSignInputBuilder.setBorderRequired}
-     * alone does not survive it — set this to keep the box.
+     * Draw a thin black box around the signature rectangle, on the post-sign
+     * details overlay. The overlay is opaque, so set this to show the box on it
+     * as well as on the signed field ({@code eSignInputBuilder.setBorderRequired}).
      */
     private boolean borderRequired;
 
